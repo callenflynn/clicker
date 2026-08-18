@@ -3,7 +3,7 @@
 <head>
     <title>clih</title>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; background: #eef4fb; }
         button { padding: 10px 16px; font-size: 15px; cursor: pointer; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         #money { font-size: 28px; margin: 10px; }
@@ -20,20 +20,100 @@
             cursor: pointer;
         }
         #version {
-    position: fixed;
-    right: 6px;
-    bottom: 6px;
-    font-size: 11px;
-    color: #888;
-    font-family: monospace;
-    pointer-events: none;
-}
+            position: fixed;
+            right: 6px;
+            bottom: 6px;
+            font-size: 11px;
+            color: #888;
+            font-family: monospace;
+            pointer-events: none;
+            z-index: 60;
+        }
 
         .hint { color: #666; font-size: 13px; margin-top: 5px; }
-        .shop { margin-top: 20px; }
-        .item { margin: 8px; }
-        .item button { min-width: 280px; }
+
+        /* ---- slideout shop ---- */
+        .shop-toggle {
+            position: fixed;
+            top: 14px;
+            right: 14px;
+            z-index: 30;
+            background: #1f2937;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        }
+        .shop-toggle:hover { background: #111827; }
+
+        .shop-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.4);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.25s ease, visibility 0.25s ease;
+            z-index: 40;
+        }
+        .shop-backdrop.open { opacity: 1; visibility: visible; }
+
+        .shop-panel {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 300px;
+            max-width: 85vw;
+            background: #fff;
+            box-shadow: -10px 0 28px rgba(0,0,0,0.28);
+            transform: translateX(100%);
+            transition: transform 0.28s ease;
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+        }
+        .shop-panel.open { transform: translateX(0); }
+
+        .shop-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            border-bottom: 1px solid #e2e8f0;
+            font-weight: bold;
+            font-size: 17px;
+        }
+        .shop-close {
+            border: none;
+            background: #eef2f7;
+            border-radius: 6px;
+            width: 32px;
+            height: 32px;
+            line-height: 1;
+            font-size: 20px;
+            padding: 0;
+        }
+        .shop-close:hover { background: #e2e8f0; }
+
+        .shop {
+            overflow-y: auto;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .item button { width: 100%; }
+
         #toolbar { margin-top: 20px; }
+        #resetBtn {
+            background: #dc2626;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        #resetBtn:hover { background: #b91c1c; }
     </style>
 </head>
 <body>
@@ -46,15 +126,25 @@
     <canvas id="scene" width="320" height="150"></canvas>
     <div class="hint">Click the plane to earn money. Buy buildings to grow your city.</div>
 
-    <div class="shop" id="shop"></div>
     <div id="toolbar">
-        <button id="saveBtn">Save</button>
         <button id="resetBtn">Reset</button>
+    </div>
+
+    <!-- slideout shop -->
+    <button id="shopToggle" class="shop-toggle">🛒 Shop</button>
+    <div id="shopBackdrop" class="shop-backdrop"></div>
+    <div id="shopPanel" class="shop-panel">
+        <div class="shop-head">
+            <span>Shop</span>
+            <button id="shopClose" class="shop-close">×</button>
+        </div>
+        <div class="shop" id="shop"></div>
     </div>
 
     <script>
         const SAVE_KEY = 'clih-save';
         const PIXEL_W = 320, PIXEL_H = 150;
+        const SKYLINE_Y = 100;
         const GROUND_Y = 128;
 
         // Building types (passive income, scaling price)
@@ -67,11 +157,19 @@
         ];
 
         const BUILDING_STYLES = [
-            { w: 14, h: 16, body: '#8b3a3a', dark: '#5e2323' }, // House
-            { w: 18, h: 20, body: '#7a4a2a', dark: '#4e2d18' }, // Shop
-            { w: 16, h: 28, body: '#b07840', dark: '#7a4d22' }, // Apartment
-            { w: 20, h: 34, body: '#6b6f76', dark: '#464a50' }, // Office
-            { w: 22, h: 44, body: '#4d5a6b', dark: '#303b49' }  // Skyscraper
+            { w: 14, h: 16, body: '#8b3a3a', dark: '#5e2323', layer: 0 }, // House
+            { w: 18, h: 20, body: '#7a4a2a', dark: '#4e2d18', layer: 0 }, // Shop
+            { w: 16, h: 28, body: '#b07840', dark: '#7a4d22', layer: 1 }, // Apartment
+            { w: 20, h: 34, body: '#6b6f76', dark: '#464a50', layer: 2 }, // Office
+            { w: 22, h: 44, body: '#4d5a6b', dark: '#303b49', layer: 2 }  // Skyscraper
+        ];
+
+        // Depth bands drawn back-to-front. Taller buildings live further back,
+        // sit higher on the ground plane, and scroll slower (parallax).
+        const LAYERS = [
+            { speed: 1.00, groundOffset: 0 }, // front: houses, shops
+            { speed: 0.78, groundOffset: 4 }, // middle: apartments
+            { speed: 0.60, groundOffset: 9 }  // back: offices, skyscrapers
         ];
 
         let state = {
@@ -85,6 +183,10 @@
         const incomeEl = document.getElementById('income');
         const clickBtn = document.getElementById('clickBtn');
         const shopEl = document.getElementById('shop');
+        const shopPanel = document.getElementById('shopPanel');
+        const shopBackdrop = document.getElementById('shopBackdrop');
+        const shopToggle = document.getElementById('shopToggle');
+        const shopClose = document.getElementById('shopClose');
         const canvas = document.getElementById('scene');
         const ctx = canvas.getContext('2d');
 
@@ -106,7 +208,6 @@
         ];
 
         // distant background skyline (parallax backdrop for the city)
-        const SKYLINE_Y = 100;
         const skylineBuildings = [];
         for (let i = 0; i < 16; i++) {
             skylineBuildings.push({
@@ -134,17 +235,25 @@
             while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
             return n.toFixed(2).replace(/\.?0+$/, '') + units[i];
         }
-        function getBuildingInstances() {
-            const list = [];
-            let x = 0;
+        function getBuildingLayers() {
+            const layers = LAYERS.map(() => ({ list: [], width: PIXEL_W }));
+            const cursors = LAYERS.map(() => 0);
             buildings.forEach((b, tier) => {
                 const s = BUILDING_STYLES[tier];
+                const layer = s.layer;
                 for (let i = 0; i < state.buildings[tier]; i++) {
-                    list.push({ tier, x });
-                    x += s.w + 8;
+                    layers[layer].list.push({
+                        tier,
+                        x: cursors[layer],
+                        yj: ((i * 37 + tier * 13) % 5) - 2
+                    });
+                    cursors[layer] += s.w + 8;
                 }
             });
-            return { list, width: Math.max(x, PIXEL_W) };
+            layers.forEach((layer, idx) => {
+                if (cursors[idx] > layer.width) layer.width = cursors[idx];
+            });
+            return layers;
         }
 
         // ---- buy actions ----
@@ -182,6 +291,15 @@
                 shopEl.appendChild(div);
                 return btn;
             });
+        }
+
+        function openShop() {
+            shopPanel.classList.add('open');
+            shopBackdrop.classList.add('open');
+        }
+        function closeShop() {
+            shopPanel.classList.remove('open');
+            shopBackdrop.classList.remove('open');
         }
 
         function update() {
@@ -269,7 +387,7 @@
         function drawScene() {
             // sky
             ctx.fillStyle = '#9ad0ff';
-            ctx.fillRect(0, 0, PIXEL_W, GROUND_Y);
+            ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
 
             // background city + haze (behind everything else)
             drawSkyline();
@@ -282,11 +400,11 @@
                 ctx.fillRect(cx, c.y, c.w, 4);
             });
 
-            // ground
+            // ground plane from the horizon down
             ctx.fillStyle = '#3f9b3f';
-            ctx.fillRect(0, GROUND_Y, PIXEL_W, PIXEL_H - GROUND_Y);
+            ctx.fillRect(0, SKYLINE_Y, PIXEL_W, PIXEL_H - SKYLINE_Y);
             ctx.fillStyle = '#358335';
-            ctx.fillRect(0, GROUND_Y, PIXEL_W, 2);
+            ctx.fillRect(0, SKYLINE_Y, PIXEL_W, 2);
 
             // scrolling grass tufts (mid-ground parallax)
             ctx.fillStyle = '#2f7a2f';
@@ -295,18 +413,21 @@
                 ctx.fillRect(gx, GROUND_Y + 5, 2, 4);
             }
 
-            // player's buildings scrolling right -> left (foreground buildings)
-            const { list, width } = getBuildingInstances();
-            list.forEach(b => {
-                const s = BUILDING_STYLES[b.tier];
-                const sx = ((b.x - scrollX) % width + width) % width;
-                // soft ground shadow for depth
-                ctx.fillStyle = 'rgba(20, 50, 20, 0.25)';
-                ctx.fillRect(sx + 1, GROUND_Y, s.w - 2, 2);
-                ctx.fillRect(sx - width + 1, GROUND_Y, s.w - 2, 2);
-                drawBrickBuilding(sx, GROUND_Y - s.h, s.w, s.h, s.body, s.dark);
-                drawBrickBuilding(sx - width, GROUND_Y - s.h, s.w, s.h, s.body, s.dark);
-            });
+            // player's buildings, layered back-to-front for natural depth
+            const buildingLayers = getBuildingLayers();
+            for (let li = LAYERS.length - 1; li >= 0; li--) {
+                const layer = LAYERS[li];
+                const layerData = buildingLayers[li];
+                const baseY = GROUND_Y - layer.groundOffset;
+                layerData.list.forEach(b => {
+                    const s = BUILDING_STYLES[b.tier];
+                    const sx = ((b.x - scrollX * layer.speed) % layerData.width + layerData.width) % layerData.width;
+                    // soft ground shadow for depth
+                    ctx.fillStyle = 'rgba(20, 50, 20, 0.25)';
+                    ctx.fillRect(sx + 1, baseY, s.w - 2, 2);
+                    drawBrickBuilding(sx, baseY - s.h + b.yj, s.w, s.h, s.body, s.dark);
+                });
+            }
 
             // foreground grass strip (fast parallax, closest layer)
             ctx.fillStyle = '#2c6e34';
@@ -356,20 +477,22 @@
             }
         });
 
-        // ---- fallback button + save/reset ----
+        // ---- fallback button + shop + reset ----
         clickBtn.onclick = () => {
             state.money += state.clickPower;
             update();
         };
 
+        shopToggle.onclick = openShop;
+        shopClose.onclick = closeShop;
+        shopBackdrop.onclick = closeShop;
+
         document.getElementById('resetBtn').onclick = () => {
-            if (!confirm('Reset all progress?')) return;
+            if (!confirm('Reset all progress? This cannot be undone.')) return;
             state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0) };
             save();
             update();
         };
-
-        document.getElementById('saveBtn').onclick = save;
 
         function save() {
             localStorage.setItem(SAVE_KEY, JSON.stringify(state));
@@ -392,7 +515,7 @@
             state.money += incomePerSec() / 10;
             update();
         }, 100);
-        setInterval(save, 5000);
+        setInterval(save, 1000);
 
         load();
         createShop();
