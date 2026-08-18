@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>clih</title>
+    <title>clih — Flight Clicker</title>
     <style>
         body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
         button { padding: 10px 16px; font-size: 15px; cursor: pointer; }
@@ -27,7 +27,7 @@
     </style>
 </head>
 <body>
-    <h1>clih</h1>
+    <h1>clih — Flight Clicker</h1>
     <div id="money">$0</div>
     <div id="income">$0 / sec</div>
     <button id="clickBtn">Click (+1)</button>
@@ -47,18 +47,21 @@
         const PIXEL_W = 320, PIXEL_H = 150;
         const GROUND_Y = 128;
 
+        // Building types (passive income, scaling price)
         const buildings = [
-            { name: 'Cursor',  baseCost: 15,    costMult: 1.15, income: 0.1 },
-            { name: 'Grandma', baseCost: 100,   costMult: 1.15, income: 1   },
-            { name: 'Farm',    baseCost: 1100,  costMult: 1.15, income: 8   },
-            { name: 'Factory', baseCost: 12000, costMult: 1.15, income: 47  }
+            { name: 'House',      baseCost: 15,     costMult: 1.15, income: 0.1 },
+            { name: 'Shop',       baseCost: 100,    costMult: 1.15, income: 1   },
+            { name: 'Apartment',  baseCost: 1100,   costMult: 1.15, income: 8   },
+            { name: 'Office',     baseCost: 12000,  costMult: 1.15, income: 47  },
+            { name: 'Skyscraper', baseCost: 130000, costMult: 1.15, income: 260 }
         ];
 
         const BUILDING_STYLES = [
-            { w: 14, h: 16, body: '#8b3a3a', dark: '#5e2323' }, // brick house
-            { w: 16, h: 20, body: '#7a4a2a', dark: '#4e2d18' }, // grandma
-            { w: 18, h: 24, body: '#9c3b2a', dark: '#6b2518' }, // farm barn
-            { w: 22, h: 30, body: '#6b6f76', dark: '#464a50' }  // factory
+            { w: 14, h: 16, body: '#8b3a3a', dark: '#5e2323' }, // House
+            { w: 18, h: 20, body: '#7a4a2a', dark: '#4e2d18' }, // Shop
+            { w: 16, h: 28, body: '#b07840', dark: '#7a4d22' }, // Apartment
+            { w: 20, h: 34, body: '#6b6f76', dark: '#464a50' }, // Office
+            { w: 22, h: 44, body: '#4d5a6b', dark: '#303b49' }  // Skyscraper
         ];
 
         let state = {
@@ -75,11 +78,22 @@
         const canvas = document.getElementById('scene');
         const ctx = canvas.getContext('2d');
 
-        // ---- plane animation state ----
-        let planeX = -20;
+        let cpBtn = null;
+        let buildingBtns = [];
+
+        // ---- scene animation state ----
         const planeW = 19, planeH = 12;
+        let planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
+        let planeY = 46;
         let frame = 0;
-        let floaters = []; // {x, y, text, life}
+        let scrollX = 0;
+        let floaters = [];
+
+        const clouds = [
+            { x: 40,  y: 25, w: 12 },
+            { x: 130, y: 15, w: 8  },
+            { x: 230, y: 40, w: 16 }
+        ];
 
         // ---- helpers ----
         function buildingCost(i) {
@@ -98,58 +112,75 @@
             while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
             return n.toFixed(2).replace(/\.?0+$/, '') + units[i];
         }
+        function getBuildingInstances() {
+            const list = [];
+            let x = 0;
+            buildings.forEach((b, tier) => {
+                const s = BUILDING_STYLES[tier];
+                for (let i = 0; i < state.buildings[tier]; i++) {
+                    list.push({ tier, x });
+                    x += s.w + 8;
+                }
+            });
+            return { list, width: Math.max(x, PIXEL_W) };
+        }
 
-        // ---- UI ----
+        // ---- buy actions ----
+        function buyClickPower() {
+            if (state.money >= clickCost()) {
+                state.money -= clickCost();
+                state.clickLevel++;
+                state.clickPower++;
+                update();
+            }
+        }
+        function buyBuilding(i) {
+            if (state.money >= buildingCost(i)) {
+                state.money -= buildingCost(i);
+                state.buildings[i]++;
+                update();
+            }
+        }
+
+        // ---- shop UI (built once) ----
+        function createShop() {
+            const cpDiv = document.createElement('div');
+            cpDiv.className = 'item';
+            cpBtn = document.createElement('button');
+            cpBtn.onclick = buyClickPower;
+            cpDiv.appendChild(cpBtn);
+            shopEl.appendChild(cpDiv);
+
+            buildingBtns = buildings.map((b, i) => {
+                const div = document.createElement('div');
+                div.className = 'item';
+                const btn = document.createElement('button');
+                btn.onclick = () => buyBuilding(i);
+                div.appendChild(btn);
+                shopEl.appendChild(div);
+                return btn;
+            });
+        }
+
         function update() {
             moneyEl.textContent = '$' + fmt(state.money);
             incomeEl.textContent = '$' + fmt(incomePerSec()) + ' / sec';
             clickBtn.textContent = 'Click (+' + state.clickPower + ')';
-            renderShop();
-        }
 
-        function renderShop() {
-            shopEl.innerHTML = '';
-
-            const cpDiv = document.createElement('div');
-            cpDiv.className = 'item';
-            const cpBtn = document.createElement('button');
             cpBtn.textContent = 'Click Power (lvl ' + state.clickLevel + ') - $' + fmt(clickCost());
             cpBtn.disabled = state.money < clickCost();
-            cpBtn.onclick = () => {
-                if (state.money >= clickCost()) {
-                    state.money -= clickCost();
-                    state.clickLevel++;
-                    state.clickPower++;
-                    update();
-                }
-            };
-            cpDiv.appendChild(cpBtn);
-            shopEl.appendChild(cpDiv);
 
             buildings.forEach((b, i) => {
-                const div = document.createElement('div');
-                div.className = 'item';
-                const btn = document.createElement('button');
-                btn.textContent = b.name + ' (' + state.buildings[i] + ') - $' + fmt(buildingCost(i));
-                btn.disabled = state.money < buildingCost(i);
-                btn.onclick = () => {
-                    if (state.money >= buildingCost(i)) {
-                        state.money -= buildingCost(i);
-                        state.buildings[i]++;
-                        update();
-                    }
-                };
-                div.appendChild(btn);
-                shopEl.appendChild(div);
+                buildingBtns[i].textContent = b.name + ' (' + state.buildings[i] + ') - $' + fmt(buildingCost(i));
+                buildingBtns[i].disabled = state.money < buildingCost(i);
             });
         }
 
         // ---- pixel-art drawing ----
-        function drawBrickBuilding(cx, x, y, w, h, body, dark) {
+        function drawBrickBuilding(x, y, w, h, body, dark) {
             ctx.fillStyle = body;
             ctx.fillRect(x, y, w, h);
 
-            // brick pattern
             ctx.fillStyle = dark;
             const brickH = 3;
             for (let row = 0; row * brickH < h; row++) {
@@ -161,7 +192,6 @@
                 }
             }
 
-            // windows
             ctx.fillStyle = '#ffd23f';
             for (let wx = x + 2; wx < x + w - 2; wx += 5) {
                 for (let wy = y + 3; wy < y + h - 4; wy += 6) {
@@ -169,9 +199,8 @@
                 }
             }
 
-            // factory chimney
-            if (w >= 20) {
-                ctx.fillStyle = '#464a50';
+            if (w >= 20) { // chimney for big buildings
+                ctx.fillStyle = dark;
                 ctx.fillRect(x + w - 6, y - 5, 3, 5);
                 ctx.fillStyle = '#999';
                 ctx.fillRect(x + w - 6, y - 6, 3, 1);
@@ -179,28 +208,22 @@
         }
 
         function drawPlane(x, y) {
-            // tail
             ctx.fillStyle = '#d33';
-            ctx.fillRect(x + 1, y + 1, 2, 2);
+            ctx.fillRect(x + 1, y + 1, 2, 2);            // tail fin
             ctx.fillStyle = '#a0a0a8';
-            ctx.fillRect(x + 2, y + 3, 3, 3);
-            // fuselage
+            ctx.fillRect(x + 2, y + 3, 3, 3);            // tail
             ctx.fillStyle = '#c8c8d0';
-            ctx.fillRect(x + 4, y + 5, 12, 3);
-            ctx.fillRect(x + 13, y + 6, 4, 1); // nose
-            // wings
+            ctx.fillRect(x + 4, y + 5, 12, 3);           // fuselage
+            ctx.fillRect(x + 13, y + 6, 4, 1);           // nose
             ctx.fillStyle = '#888894';
-            ctx.fillRect(x + 7, y + 2, 5, 1);
-            ctx.fillRect(x + 7, y + 9, 5, 1);
-            // stripe
+            ctx.fillRect(x + 7, y + 2, 5, 1);            // top wing
+            ctx.fillRect(x + 7, y + 9, 5, 1);            // bottom wing
             ctx.fillStyle = '#d33';
-            ctx.fillRect(x + 4, y + 5, 12, 1);
-            // window
+            ctx.fillRect(x + 4, y + 5, 12, 1);           // stripe
             ctx.fillStyle = '#7cd8ff';
-            ctx.fillRect(x + 14, y + 6, 2, 1);
-            // spinning propeller
+            ctx.fillRect(x + 14, y + 6, 2, 1);           // window
             ctx.fillStyle = '#333';
-            if (frame % 6 < 3) {
+            if (frame % 6 < 3) {                          // spinning propeller
                 ctx.fillRect(x + 17, y + 4, 1, 6);
             } else {
                 ctx.fillRect(x + 17, y + 6, 1, 1);
@@ -218,25 +241,34 @@
             ctx.fillStyle = '#358335';
             ctx.fillRect(0, GROUND_Y, PIXEL_W, 2);
 
-            // buildings (one per owned building)
-            let bx = 2;
-            buildings.forEach((b, tier) => {
-                for (let i = 0; i < state.buildings[tier]; i++) {
-                    const s = BUILDING_STYLES[tier];
-                    drawBrickBuilding(ctx, bx, GROUND_Y - s.h, s.w, s.h, s.body, s.dark);
-                    bx += s.w + 4;
-                }
+            // scrolling grass tufts (ground parallax)
+            ctx.fillStyle = '#2f7a2f';
+            for (let i = 0; i < 8; i++) {
+                const gx = ((i * 45 - scrollX) % PIXEL_W + PIXEL_W) % PIXEL_W;
+                ctx.fillRect(gx, GROUND_Y + 5, 2, 4);
+            }
+
+            // clouds (slow parallax)
+            ctx.fillStyle = '#ffffff';
+            clouds.forEach(c => {
+                const span = PIXEL_W + 40;
+                const cx = ((c.x - scrollX * 0.4) % span + span) % span - 20;
+                ctx.fillRect(cx, c.y, c.w, 4);
             });
 
-            // clouds
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(40, 25, 12, 4);
-            ctx.fillRect(200, 40, 16, 4);
-            ctx.fillRect(120, 15, 8, 3);
+            // buildings scrolling right -> left
+            const { list, width } = getBuildingInstances();
+            list.forEach(b => {
+                const s = BUILDING_STYLES[b.tier];
+                const sx = ((b.x - scrollX) % width + width) % width;
+                drawBrickBuilding(sx, GROUND_Y - s.h, s.w, s.h, s.body, s.dark);
+                drawBrickBuilding(sx - width, GROUND_Y - s.h, s.w, s.h, s.body, s.dark);
+            });
 
-            // plane
-            const planeY = 80 + Math.round(Math.sin(planeX * 0.05) * 5);
-            drawPlane(Math.round(planeX), planeY);
+            // plane centered, bobbing
+            planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
+            planeY = 46 + Math.round(Math.sin(frame * 0.04) * 4);
+            drawPlane(planeX, planeY);
 
             // floating +$ text
             floaters.forEach(f => {
@@ -250,8 +282,7 @@
 
         function animate() {
             frame++;
-            planeX += 0.8;
-            if (planeX > PIXEL_W) planeX = -planeW;
+            scrollX += 1.2;
 
             floaters = floaters.filter(f => f.life > 0);
             floaters.forEach(f => { f.y -= 0.5; f.life--; });
@@ -260,21 +291,20 @@
             requestAnimationFrame(animate);
         }
 
-        // ---- clicking the plane ----
+        // ---- click the plane ----
         canvas.addEventListener('click', (e) => {
             const rect = canvas.getBoundingClientRect();
             const px = (e.clientX - rect.left) * (PIXEL_W / rect.width);
             const py = (e.clientY - rect.top) * (PIXEL_H / rect.height);
-            const planeY = 80 + Math.sin(planeX * 0.05) * 5;
 
             if (px >= planeX && px <= planeX + planeW && py >= planeY && py <= planeY + planeH) {
                 state.money += state.clickPower;
-                floaters.push({ x: Math.round(planeX), y: Math.round(planeY), text: '+' + state.clickPower, life: 40 });
+                floaters.push({ x: planeX, y: planeY, text: '+' + state.clickPower, life: 40 });
                 update();
             }
         });
 
-        // ---- actions ----
+        // ---- fallback button + save/reset ----
         clickBtn.onclick = () => {
             state.money += state.clickPower;
             update();
@@ -289,7 +319,6 @@
 
         document.getElementById('saveBtn').onclick = save;
 
-        // save  load
         function save() {
             localStorage.setItem(SAVE_KEY, JSON.stringify(state));
         }
@@ -301,10 +330,12 @@
                 state.clickPower = data.clickPower ?? 1;
                 state.clickLevel = data.clickLevel ?? 0;
                 state.buildings = data.buildings ?? buildings.map(() => 0);
+                while (state.buildings.length < buildings.length) state.buildings.push(0);
+                state.buildings.length = buildings.length;
             } catch (e) {}
         }
 
-        // idle income and autosave
+        // ---- idle income + auto-save ----
         setInterval(() => {
             state.money += incomePerSec() / 10;
             update();
@@ -312,6 +343,7 @@
         setInterval(save, 5000);
 
         load();
+        createShop();
         update();
         animate();
     </script>
