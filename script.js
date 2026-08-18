@@ -70,7 +70,8 @@ let cpBtn = null;
 let buildingBtns = [];
 let buyAmount = 1;
 
-// ---- scene animation state ----        const planeW = 19, planeH = 12, planeHitPad = 4;
+// ---- scene animation state ----
+const planeW = 19, planeH = 12, planeHitPad = 4;
 let planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
 let planeY = 46;
 let frame = 0;
@@ -540,7 +541,9 @@ canvas.addEventListener('click', (e) => {
             update();
             return;
         }
-    }            if (px >= planeX && px <= planeX + planeW && py >= planeY - planeHitPad && py <= planeY + planeH + planeHitPad) {
+    }
+
+    if (px >= planeX && px <= planeX + planeW && py >= planeY - planeHitPad && py <= planeY + planeH + planeHitPad) {
         const crit = Math.random() < 0.05;
         const amount = state.clickPower * (crit ? 10 : 1);
         state.money += amount;
