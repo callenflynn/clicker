@@ -1,38 +1,319 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>clih</title>
+    <title>clih — Flight Clicker</title>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
-        #score { font-size: 24px; margin: 20px; }
+        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+        button { padding: 10px 16px; font-size: 15px; cursor: pointer; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        #money { font-size: 28px; margin: 10px; }
+        #income { color: #555; margin-bottom: 15px; }
+        #clickBtn { font-size: 17px; padding: 14px 28px; }
+        canvas {
+            width: 100%;
+            max-width: 640px;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            border: 2px solid #222;
+            background: #9ad0ff;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        .hint { color: #666; font-size: 13px; margin-top: 5px; }
+        .shop { margin-top: 20px; }
+        .item { margin: 8px; }
+        .item button { min-width: 280px; }
+        #toolbar { margin-top: 20px; }
     </style>
 </head>
 <body>
-    <h1>clih</h1>
-    <div id="score">Score: 0</div>
-    <button id="clickBtn">Click Me!</button>
-    <button id="resetBtn">Reset</button>
+    <h1>clih — Flight Clicker</h1>
+    <div id="money">$0</div>
+    <div id="income">$0 / sec</div>
+    <button id="clickBtn">Click (+1)</button>
+
+    <br>
+    <canvas id="scene" width="320" height="150"></canvas>
+    <div class="hint">Click the plane to earn money. Buy buildings to grow your city.</div>
+
+    <div class="shop" id="shop"></div>
+    <div id="toolbar">
+        <button id="saveBtn">Save</button>
+        <button id="resetBtn">Reset</button>
+    </div>
 
     <script>
-        let score = 0;
-        const scoreDisplay = document.getElementById('score');
+        const SAVE_KEY = 'clih-save';
+        const PIXEL_W = 320, PIXEL_H = 150;
+        const GROUND_Y = 128;
+
+        const buildings = [
+            { name: 'Cursor',  baseCost: 15,    costMult: 1.15, income: 0.1 },
+            { name: 'Grandma', baseCost: 100,   costMult: 1.15, income: 1   },
+            { name: 'Farm',    baseCost: 1100,  costMult: 1.15, income: 8   },
+            { name: 'Factory', baseCost: 12000, costMult: 1.15, income: 47  }
+        ];
+
+        const BUILDING_STYLES = [
+            { w: 14, h: 16, body: '#8b3a3a', dark: '#5e2323' }, // brick house
+            { w: 16, h: 20, body: '#7a4a2a', dark: '#4e2d18' }, // grandma
+            { w: 18, h: 24, body: '#9c3b2a', dark: '#6b2518' }, // farm barn
+            { w: 22, h: 30, body: '#6b6f76', dark: '#464a50' }  // factory
+        ];
+
+        let state = {
+            money: 0,
+            clickPower: 1,
+            clickLevel: 0,
+            buildings: buildings.map(() => 0)
+        };
+
+        const moneyEl = document.getElementById('money');
+        const incomeEl = document.getElementById('income');
         const clickBtn = document.getElementById('clickBtn');
-        const resetBtn = document.getElementById('resetBtn');
+        const shopEl = document.getElementById('shop');
+        const canvas = document.getElementById('scene');
+        const ctx = canvas.getContext('2d');
 
-        clickBtn.onclick = function() {
-            score++;
-            updateScore();
-        };
+        // ---- plane animation state ----
+        let planeX = -20;
+        const planeW = 19, planeH = 12;
+        let frame = 0;
+        let floaters = []; // {x, y, text, life}
 
-        resetBtn.onclick = function() {
-            score = 0;
-            updateScore();
-        };
-
-        function updateScore() {
-            scoreDisplay.textContent = "Score: " + score;
+        // ---- helpers ----
+        function buildingCost(i) {
+            return Math.floor(buildings[i].baseCost * Math.pow(buildings[i].costMult, state.buildings[i]));
         }
+        function clickCost() {
+            return Math.floor(10 * Math.pow(1.5, state.clickLevel));
+        }
+        function incomePerSec() {
+            return buildings.reduce((sum, b, i) => sum + b.income * state.buildings[i], 0);
+        }
+        function fmt(n) {
+            if (n < 1000) return Math.floor(n).toString();
+            const units = ['K', 'M', 'B', 'T', 'Qa', 'Qi'];
+            let i = -1;
+            while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
+            return n.toFixed(2).replace(/\.?0+$/, '') + units[i];
+        }
+
+        // ---- UI ----
+        function update() {
+            moneyEl.textContent = '$' + fmt(state.money);
+            incomeEl.textContent = '$' + fmt(incomePerSec()) + ' / sec';
+            clickBtn.textContent = 'Click (+' + state.clickPower + ')';
+            renderShop();
+        }
+
+        function renderShop() {
+            shopEl.innerHTML = '';
+
+            const cpDiv = document.createElement('div');
+            cpDiv.className = 'item';
+            const cpBtn = document.createElement('button');
+            cpBtn.textContent = 'Click Power (lvl ' + state.clickLevel + ') - $' + fmt(clickCost());
+            cpBtn.disabled = state.money < clickCost();
+            cpBtn.onclick = () => {
+                if (state.money >= clickCost()) {
+                    state.money -= clickCost();
+                    state.clickLevel++;
+                    state.clickPower++;
+                    update();
+                }
+            };
+            cpDiv.appendChild(cpBtn);
+            shopEl.appendChild(cpDiv);
+
+            buildings.forEach((b, i) => {
+                const div = document.createElement('div');
+                div.className = 'item';
+                const btn = document.createElement('button');
+                btn.textContent = b.name + ' (' + state.buildings[i] + ') - $' + fmt(buildingCost(i));
+                btn.disabled = state.money < buildingCost(i);
+                btn.onclick = () => {
+                    if (state.money >= buildingCost(i)) {
+                        state.money -= buildingCost(i);
+                        state.buildings[i]++;
+                        update();
+                    }
+                };
+                div.appendChild(btn);
+                shopEl.appendChild(div);
+            });
+        }
+
+        // ---- pixel-art drawing ----
+        function drawBrickBuilding(cx, x, y, w, h, body, dark) {
+            ctx.fillStyle = body;
+            ctx.fillRect(x, y, w, h);
+
+            // brick pattern
+            ctx.fillStyle = dark;
+            const brickH = 3;
+            for (let row = 0; row * brickH < h; row++) {
+                const yy = y + row * brickH;
+                ctx.fillRect(x, yy, w, 1);
+                const off = (row % 2) * 3;
+                for (let col = off; col < w; col += 6) {
+                    ctx.fillRect(x + col, yy, 1, brickH);
+                }
+            }
+
+            // windows
+            ctx.fillStyle = '#ffd23f';
+            for (let wx = x + 2; wx < x + w - 2; wx += 5) {
+                for (let wy = y + 3; wy < y + h - 4; wy += 6) {
+                    ctx.fillRect(wx, wy, 2, 3);
+                }
+            }
+
+            // factory chimney
+            if (w >= 20) {
+                ctx.fillStyle = '#464a50';
+                ctx.fillRect(x + w - 6, y - 5, 3, 5);
+                ctx.fillStyle = '#999';
+                ctx.fillRect(x + w - 6, y - 6, 3, 1);
+            }
+        }
+
+        function drawPlane(x, y) {
+            // tail
+            ctx.fillStyle = '#d33';
+            ctx.fillRect(x + 1, y + 1, 2, 2);
+            ctx.fillStyle = '#a0a0a8';
+            ctx.fillRect(x + 2, y + 3, 3, 3);
+            // fuselage
+            ctx.fillStyle = '#c8c8d0';
+            ctx.fillRect(x + 4, y + 5, 12, 3);
+            ctx.fillRect(x + 13, y + 6, 4, 1); // nose
+            // wings
+            ctx.fillStyle = '#888894';
+            ctx.fillRect(x + 7, y + 2, 5, 1);
+            ctx.fillRect(x + 7, y + 9, 5, 1);
+            // stripe
+            ctx.fillStyle = '#d33';
+            ctx.fillRect(x + 4, y + 5, 12, 1);
+            // window
+            ctx.fillStyle = '#7cd8ff';
+            ctx.fillRect(x + 14, y + 6, 2, 1);
+            // spinning propeller
+            ctx.fillStyle = '#333';
+            if (frame % 6 < 3) {
+                ctx.fillRect(x + 17, y + 4, 1, 6);
+            } else {
+                ctx.fillRect(x + 17, y + 6, 1, 1);
+                ctx.fillRect(x + 17, y + 9, 1, 1);
+            }
+        }
+
+        function drawScene() {
+            // sky
+            ctx.fillStyle = '#9ad0ff';
+            ctx.fillRect(0, 0, PIXEL_W, GROUND_Y);
+            // ground
+            ctx.fillStyle = '#3f9b3f';
+            ctx.fillRect(0, GROUND_Y, PIXEL_W, PIXEL_H - GROUND_Y);
+            ctx.fillStyle = '#358335';
+            ctx.fillRect(0, GROUND_Y, PIXEL_W, 2);
+
+            // buildings (one per owned building)
+            let bx = 2;
+            buildings.forEach((b, tier) => {
+                for (let i = 0; i < state.buildings[tier]; i++) {
+                    const s = BUILDING_STYLES[tier];
+                    drawBrickBuilding(ctx, bx, GROUND_Y - s.h, s.w, s.h, s.body, s.dark);
+                    bx += s.w + 4;
+                }
+            });
+
+            // clouds
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(40, 25, 12, 4);
+            ctx.fillRect(200, 40, 16, 4);
+            ctx.fillRect(120, 15, 8, 3);
+
+            // plane
+            const planeY = 80 + Math.round(Math.sin(planeX * 0.05) * 5);
+            drawPlane(Math.round(planeX), planeY);
+
+            // floating +$ text
+            floaters.forEach(f => {
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(f.x, f.y, f.text.length * 5 + 4, 8);
+                ctx.fillStyle = '#fff';
+                ctx.font = '7px monospace';
+                ctx.fillText(f.text, f.x + 2, f.y + 7);
+            });
+        }
+
+        function animate() {
+            frame++;
+            planeX += 0.8;
+            if (planeX > PIXEL_W) planeX = -planeW;
+
+            floaters = floaters.filter(f => f.life > 0);
+            floaters.forEach(f => { f.y -= 0.5; f.life--; });
+
+            drawScene();
+            requestAnimationFrame(animate);
+        }
+
+        // ---- clicking the plane ----
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const px = (e.clientX - rect.left) * (PIXEL_W / rect.width);
+            const py = (e.clientY - rect.top) * (PIXEL_H / rect.height);
+            const planeY = 80 + Math.sin(planeX * 0.05) * 5;
+
+            if (px >= planeX && px <= planeX + planeW && py >= planeY && py <= planeY + planeH) {
+                state.money += state.clickPower;
+                floaters.push({ x: Math.round(planeX), y: Math.round(planeY), text: '+' + state.clickPower, life: 40 });
+                update();
+            }
+        });
+
+        // ---- actions ----
+        clickBtn.onclick = () => {
+            state.money += state.clickPower;
+            update();
+        };
+
+        document.getElementById('resetBtn').onclick = () => {
+            if (!confirm('Reset all progress?')) return;
+            state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0) };
+            save();
+            update();
+        };
+
+        document.getElementById('saveBtn').onclick = save;
+
+        // save  load
+        function save() {
+            localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+        }
+        function load() {
+            try {
+                const data = JSON.parse(localStorage.getItem(SAVE_KEY));
+                if (!data) return;
+                state.money = data.money ?? 0;
+                state.clickPower = data.clickPower ?? 1;
+                state.clickLevel = data.clickLevel ?? 0;
+                state.buildings = data.buildings ?? buildings.map(() => 0);
+            } catch (e) {}
+        }
+
+        // idle income and autosave
+        setInterval(() => {
+            state.money += incomePerSec() / 10;
+            update();
+        }, 100);
+        setInterval(save, 5000);
+
+        load();
+        update();
+        animate();
     </script>
 </body>
-</html>   
+</html>
