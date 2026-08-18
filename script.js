@@ -70,8 +70,7 @@ let cpBtn = null;
 let buildingBtns = [];
 let buyAmount = 1;
 
-// ---- scene animation state ----
-const planeW = 19, planeH = 12;
+// ---- scene animation state ----        const planeW = 19, planeH = 12, planeHitPad = 4;
 let planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
 let planeY = 46;
 let frame = 0;
@@ -466,11 +465,16 @@ function drawScene() {
         const baseY = GROUND_Y - layer.groundOffset;
         layerData.list.forEach(b => {
             const s = BUILDING_STYLES[b.tier];
-            const sx = ((b.x - scrollX * layer.speed) % layerData.width + layerData.width) % layerData.width;
-            // soft ground shadow for depth
-            ctx.fillStyle = 'rgba(20, 50, 20, 0.25)';
-            ctx.fillRect(sx + 1, baseY, s.w - 2, 2);
-            drawBrickBuilding(sx, baseY - s.h + b.yj, s.w, s.h, s.body, s.dark);
+            const span = layerData.width;
+            const sx = ((b.x - scrollX * layer.speed) % span + span) % span;
+            // Draw wrap copies on both sides so buildings loop seamlessly
+            // at the screen edges instead of vanishing mid-screen.
+            [sx - span, sx, sx + span].forEach(x => {
+                if (x + s.w <= 0 || x >= PIXEL_W) return;
+                ctx.fillStyle = 'rgba(20, 50, 20, 0.25)';
+                ctx.fillRect(x + 1, baseY, s.w - 2, 2);
+                drawBrickBuilding(x, baseY - s.h + b.yj, s.w, s.h, s.body, s.dark);
+            });
         });
     }
 
@@ -536,9 +540,7 @@ canvas.addEventListener('click', (e) => {
             update();
             return;
         }
-    }
-
-    if (px >= planeX && px <= planeX + planeW && py >= planeY && py <= planeY + planeH) {
+    }            if (px >= planeX && px <= planeX + planeW && py >= planeY - planeHitPad && py <= planeY + planeH + planeHitPad) {
         const crit = Math.random() < 0.05;
         const amount = state.clickPower * (crit ? 10 : 1);
         state.money += amount;
