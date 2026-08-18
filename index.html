@@ -8,7 +8,6 @@
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         #money { font-size: 28px; margin: 10px; }
         #income { color: #555; margin-bottom: 15px; }
-        #clickBtn { font-size: 17px; padding: 14px 28px; }
         canvas {
             box-sizing: border-box;
             width: calc(100% + 40px);
@@ -120,8 +119,6 @@
     <h1>clih</h1>
     <div id="money">$0</div>
     <div id="income">$0 / sec</div>
-    <button id="clickBtn">Click (+1)</button>
-
     <br>
     <canvas id="scene" width="320" height="150"></canvas>
     <div class="hint">Click the plane to earn money. Buy buildings to grow your city.</div>
@@ -181,7 +178,6 @@
 
         const moneyEl = document.getElementById('money');
         const incomeEl = document.getElementById('income');
-        const clickBtn = document.getElementById('clickBtn');
         const shopEl = document.getElementById('shop');
         const shopPanel = document.getElementById('shopPanel');
         const shopBackdrop = document.getElementById('shopBackdrop');
@@ -200,6 +196,7 @@
         let frame = 0;
         let scrollX = 0;
         let floaters = [];
+        let lastPlaneClick = performance.now();
 
         const clouds = [
             { x: 40,  y: 25, w: 12 },
@@ -305,7 +302,6 @@
         function update() {
             moneyEl.textContent = '$' + fmt(state.money);
             incomeEl.textContent = '$' + fmt(incomePerSec()) + ' / sec';
-            clickBtn.textContent = 'Click (+' + state.clickPower + ')';
 
             cpBtn.textContent = 'Click Power (lvl ' + state.clickLevel + ') - $' + fmt(clickCost());
             cpBtn.disabled = state.money < clickCost();
@@ -384,6 +380,26 @@
             ctx.fillRect(0, SKYLINE_Y - 1, PIXEL_W, 2);
         }
 
+        function drawClickHint() {
+            const now = performance.now();
+            if (now - lastPlaneClick < 5000) return;
+            const cx = Math.floor(planeX + planeW / 2);
+            const pulse = Math.round(Math.sin(now * 0.006) * 2);
+            const ay = planeY - 12 + pulse;
+
+            ctx.fillStyle = 'rgba(0,0,0,0.75)';
+            ctx.fillRect(cx - 16, ay - 13, 32, 9);
+            ctx.fillStyle = '#ffe14d';
+            ctx.font = '7px monospace';
+            ctx.fillText('CLICK', cx - 15, ay - 5);
+
+            // down arrow
+            ctx.fillRect(cx - 1, ay - 3, 2, 6);
+            ctx.fillRect(cx - 3, ay + 1, 6, 2);
+            ctx.fillRect(cx - 2, ay + 3, 4, 2);
+            ctx.fillRect(cx - 1, ay + 5, 2, 2);
+        }
+
         function drawScene() {
             // sky
             ctx.fillStyle = '#9ad0ff';
@@ -442,6 +458,7 @@
             planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
             planeY = 46 + Math.round(Math.sin(frame * 0.04) * 4);
             drawPlane(planeX, planeY);
+            drawClickHint();
 
             // floating +$ text
             floaters.forEach(f => {
@@ -472,17 +489,13 @@
 
             if (px >= planeX && px <= planeX + planeW && py >= planeY && py <= planeY + planeH) {
                 state.money += state.clickPower;
+                lastPlaneClick = performance.now();
                 floaters.push({ x: planeX, y: planeY, text: '+' + state.clickPower, life: 40 });
                 update();
             }
         });
 
-        // ---- fallback button + shop + reset ----
-        clickBtn.onclick = () => {
-            state.money += state.clickPower;
-            update();
-        };
-
+        // ---- shop + reset ----
         shopToggle.onclick = openShop;
         shopClose.onclick = closeShop;
         shopBackdrop.onclick = closeShop;
