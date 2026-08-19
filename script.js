@@ -292,21 +292,24 @@ function boostMult() {
 function frenzyActive() {
     return frenzy.active && performance.now() < frenzy.endsAt;
 }
-function pollution() {
-    return Math.max(0, buildings.reduce((sum, b, i) => sum + ((b.pollution || 0) - (b.pollutionReduction || 0)) * state.buildings[i], 0));
-}
-function pollutionPenalty() {
-    return Math.min(pollution() * 0.005, 0.5);
-}
-// Earth pollution is driven by total building count on Earth.
-// More buildings = more smog, yellowing grass, gray skies.
+// Pollution is based on total Earth building count, scaled by rebirths.
+// More buildings = more smog. More rebirths = industry intensifies.
 function earthPollution() {
     const total = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === 'earth' ? state.buildings[i] : 0), 0);
     if (total <= 0) return 0;
-    return Math.min(1, Math.log10(total + 1) / 4);
+    const base = Math.log10(total + 1) / 4;
+    const rebirthBoost = 1 + state.rebirths * 0.002;
+    return Math.min(1, base * rebirthBoost);
 }
 function earthPollutionLevel() {
     return earthPollution();
+}
+// For backward compat: pollution() now returns earth pollution as a raw score
+function pollution() {
+    return Math.round(earthPollution() * 100);
+}
+function pollutionPenalty() {
+    return Math.min(earthPollution() * 0.3, 0.5);
 }
 function rebirthRequirement(n) {
     const r = n === undefined ? state.rebirths : n;
@@ -786,7 +789,7 @@ function updateMeta() {
         '<div><span class="stat-label">Frenzies:</span> ' + state.frenziesTriggered + '</div>' +
         '<div><span class="stat-label">Boosts:</span> ' + state.boostsCaught + '</div>' +
         '<div><span class="stat-label">Income bonus:</span> +' + Math.round((incomeMult() - 1) * 100) + '%</div>' +
-        '<div><span class="stat-label">Pollution:</span> ' + pollution() + (pollution() > 0 ? ' (-' + Math.round(pollutionPenalty() * 100) + '% income)' : '') + '</div>';
+        '<div><span class="stat-label">Pollution:</span> ' + pollution() + '% (-' + Math.round(pollutionPenalty() * 100) + '% income)</div>';
 
 
     achievementsEl.innerHTML =
@@ -1367,8 +1370,8 @@ function drawTowerBeacons() {
 
 function drawSmog() {
     const p = pollution();
-    if (p <= 0) return;
-    const alpha = Math.min(p * 0.03, 0.65);
+    if (p <= 0 || currentMap !== 'earth') return;
+    const alpha = Math.min(p * 0.0065, 0.65);
     // brownish haze drifting across the sky itself
     ctx.fillStyle = 'rgba(150, 132, 104, ' + (alpha * 0.45).toFixed(3) + ')';
     ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
