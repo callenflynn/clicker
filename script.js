@@ -49,6 +49,8 @@ let state = {
     balloonsCaught: 0,
     prestige: 0,
     bestCombo: 0,
+    frenziesTriggered: 0,
+    boostsCaught: 0,
     lastSaved: 0
 };
 
@@ -59,6 +61,12 @@ const PRESTIGE_DIVISOR = 1e6;
 // Click combo: clicking within the window builds a temporary click multiplier
 const COMBO_WINDOW = 2500;
 const COMBO_CAP = 30;
+// Golden Plane frenzy: a timed click-multiplier event
+const FRENZY_DURATION = 15000;
+const FRENZY_MULT = 7;
+// Income boost plane: a timed passive-income multiplier event
+const BOOST_DURATION = 45000;
+const BOOST_MULT = 3;
 
 const ACHIEVEMENTS = [
     { id: 'first_click', name: 'First Flight', desc: 'Click the plane once', check: s => s.totalClicks >= 1 },
@@ -78,7 +86,9 @@ const ACHIEVEMENTS = [
     { id: 'mall_10', name: 'Retail King', desc: 'Own 10 malls', check: s => s.buildings[6] >= 10 },
     { id: 'stadium_5', name: 'Home Field Advantage', desc: 'Own 5 stadiums', check: s => s.buildings[7] >= 5 },
     { id: 'airport_1', name: 'Clear for Takeoff', desc: 'Own an airport', check: s => s.buildings[8] >= 1 },
-    { id: 'spaceport_1', name: 'To Infinity', desc: 'Own a spaceport', check: s => s.buildings[9] >= 1 }
+    { id: 'spaceport_1', name: 'To Infinity', desc: 'Own a spaceport', check: s => s.buildings[9] >= 1 },
+    { id: 'frenzy', name: 'Strike Gold', desc: 'Trigger a Golden Plane frenzy', check: s => s.frenziesTriggered >= 1 },
+    { id: 'boost', name: 'Tailwind', desc: 'Catch an income boost plane', check: s => s.boostsCaught >= 1 }
 ];
 
 const moneyEl = document.getElementById('money');
@@ -116,6 +126,10 @@ let comboEndsAt = 0;
 let lastComboMult = 1;
 let birds = [];
 let nextBirdsAt = performance.now() + 45000;
+let frenzy = { active: false, endsAt: 0, nextAt: performance.now() + 90000 };
+let boost = { active: false, endsAt: 0 };
+let boostPlane = null;
+let nextBoostAt = performance.now() + 200000;
 
 const clouds = [
     { x: 40,  y: 25, w: 12 },
@@ -188,7 +202,7 @@ function nextMilestone(i) {
 }
 function incomePerSec() {
     const base = buildings.reduce((sum, b, i) => sum + b.income * state.buildings[i] * buildingMult(i), 0);
-    return base * incomeMult();
+    return base * incomeMult() * boostMult();
 }
 function incomeMult() {
     return (1 + 0.05 * state.achievements.length) * (1 + 0.10 * state.prestige);
@@ -202,6 +216,12 @@ function pendingPrestige() {
 function comboMult() {
     return 1 + combo * 0.1;
 }
+function boostMult() {
+    return boost.active && performance.now() < boost.endsAt ? BOOST_MULT : 1;
+}
+function frenzyActive() {
+    return frenzy.active && performance.now() < frenzy.endsAt;
+}
 function fmt(n) {
     if (n < 1000) return Math.floor(n).toString();
     const units = ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
@@ -210,7 +230,17 @@ function fmt(n) {
     if (i >= units.length - 1) return n.toExponential(2).replace('+', '');
     return n.toFixed(2).replace(/\.?0+$/, '') + units[i];
 }
+let cachedLayers = null;
+let layersDirty = true;
+let metaSig = '';
+function invalidateLayers() { layersDirty = true; }
 function getBuildingLayers() {
+    if (!layersDirty && cachedLayers) return cachedLayers;
+    cachedLayers = buildBuildingLayers();
+    layersDirty = false;
+    return cachedLayers;
+}
+function buildBuildingLayers() {
     const layers = LAYERS.map(() => ({ list: [], width: PIXEL_W }));
     const cursors = LAYERS.map(() => 0);
     buildings.forEach((b, tier) => {
@@ -248,6 +278,7 @@ function buyBuilding(i) {
     if (n > 0 && state.money >= cost) {
         state.money -= cost;
         state.buildings[i] += n;
+        invalidateLayers();
         update();
     }
 }
@@ -260,12 +291,17 @@ function clickPlane() {
     if (combo > state.bestCombo) state.bestCombo = combo;
 
     const crit = Math.random() < 0.05;
-    const amount = Math.round(state.clickPower * comboMult() * (crit ? 10 : 1));
+    const frenzyOn = frenzyActive();
+    const mult = comboMult() * (crit ? 10 : 1) * (frenzyOn ? FRENZY_MULT : 1);
+    const amount = Math.round(state.clickPower * mult);
     state.money += amount;
     state.totalEarned += amount;
     state.totalClicks++;
     lastPlaneClick = now;
-    floaters.push({ x: planeX, y: planeY, text: (crit ? 'CRIT +$' : '+$') + fmt(amount), crit: crit, life: 40 });
+    let text = '+$' + fmt(amount);
+    if (crit) text = 'CRIT +$' + fmt(amount);
+    if (frenzyOn) text += ' ×' + FRENZY_MULT;
+    floaters.push({ x: planeX, y: planeY, text: text, crit: crit || frenzyOn, life: 40 });
     update();
 }
 
@@ -279,6 +315,7 @@ function doPrestige() {
     state.clickPower = 1;
     state.clickLevel = 0;
     state.buildings = buildings.map(() => 0);
+    invalidateLayers();
     save();
     update();
     showToast('⭐ Prestige! +' + gain + ' point' + (gain > 1 ? 's' : '') + ' (+' + (gain * 10) + '% income)');
@@ -397,6 +434,12 @@ function update() {
 
 function updateMeta() {
     const owned = state.buildings.reduce((a, b) => a + b, 0);
+    // Only re-render stats/achievements when something actually changed;
+    // update() runs 10×/sec so rebuilding this HTML every tick is wasteful.
+    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.prestige, state.achievements.length, state.frenziesTriggered, state.boostsCaught].join(',');
+    if (sig === metaSig) return;
+    metaSig = sig;
+
     statsEl.innerHTML =
         '<h3>Stats</h3>' +
         '<div><span class="stat-label">Clicks:</span> ' + fmt(state.totalClicks) + '</div>' +
@@ -404,6 +447,8 @@ function updateMeta() {
         '<div><span class="stat-label">Buildings:</span> ' + owned + '</div>' +
         '<div><span class="stat-label">Best combo:</span> ×' + state.bestCombo + '</div>' +
         '<div><span class="stat-label">Prestige:</span> ' + state.prestige + ' (+' + (state.prestige * 10) + '%)</div>' +
+        '<div><span class="stat-label">Frenzies:</span> ' + state.frenziesTriggered + '</div>' +
+        '<div><span class="stat-label">Boosts:</span> ' + state.boostsCaught + '</div>' +
         '<div><span class="stat-label">Income bonus:</span> +' + Math.round((incomeMult() - 1) * 100) + '%</div>';
 
     achievementsEl.innerHTML =
@@ -526,20 +571,24 @@ function drawBuilding(kind, x, y, w, h, body, dark) {
     drawBrickBuilding(x, y, w, h, body, dark);
 }
 
-function drawPlane(x, y) {
-    ctx.fillStyle = '#d33';
+function drawPlane(x, y, gold) {
+    const metal = gold ? '#ffe08a' : '#c8c8d0';
+    const metalDark = gold ? '#f0b64a' : '#a0a0a8';
+    const wing = gold ? '#e8a23a' : '#888894';
+    const stripe = gold ? '#8a4a00' : '#d33';
+    ctx.fillStyle = stripe;
     ctx.fillRect(x + 1, y + 1, 2, 2);            // tail fin
-    ctx.fillStyle = '#a0a0a8';
+    ctx.fillStyle = metalDark;
     ctx.fillRect(x + 2, y + 3, 3, 3);            // tail
-    ctx.fillStyle = '#c8c8d0';
+    ctx.fillStyle = metal;
     ctx.fillRect(x + 4, y + 5, 12, 3);           // fuselage
     ctx.fillRect(x + 13, y + 6, 4, 1);           // nose
-    ctx.fillStyle = '#888894';
+    ctx.fillStyle = wing;
     ctx.fillRect(x + 7, y + 2, 5, 1);            // top wing
     ctx.fillRect(x + 7, y + 9, 5, 1);            // bottom wing
-    ctx.fillStyle = '#d33';
+    ctx.fillStyle = stripe;
     ctx.fillRect(x + 4, y + 5, 12, 1);           // stripe
-    ctx.fillStyle = '#7cd8ff';
+    ctx.fillStyle = gold ? '#6b4a00' : '#7cd8ff';
     ctx.fillRect(x + 14, y + 6, 2, 1);           // window
     ctx.fillStyle = '#333';
     if (frame % 6 < 3) {                          // spinning propeller
@@ -548,6 +597,11 @@ function drawPlane(x, y) {
         ctx.fillRect(x + 17, y + 6, 1, 1);
         ctx.fillRect(x + 17, y + 9, 1, 1);
     }
+    if (gold) {                                    // golden glow halo
+        ctx.fillStyle = 'rgba(255,210,63,0.55)';
+        ctx.fillRect(x - 1, y - 1, planeW + 2, 1);
+        ctx.fillRect(x - 1, y + planeH, planeW + 2, 1);
+    }
 }
 
 function drawSkyline() {
@@ -555,8 +609,10 @@ function drawSkyline() {
     ctx.fillStyle = '#a9c8ea';
     skylineBuildings.forEach(b => {
         const sx = ((b.x - scrollX * 0.35) % SKYLINE_SPAN + SKYLINE_SPAN) % SKYLINE_SPAN;
-        ctx.fillRect(sx, SKYLINE_Y - b.h, b.w, b.h);
-        ctx.fillRect(sx - SKYLINE_SPAN, SKYLINE_Y - b.h, b.w, b.h);
+        [sx - SKYLINE_SPAN, sx, sx + SKYLINE_SPAN].forEach(x => {
+            if (x + b.w <= 0 || x >= PIXEL_W) return;
+            ctx.fillRect(x, SKYLINE_Y - b.h, b.w, b.h);
+        });
     });
     // haze where the city meets the sky
     ctx.fillStyle = '#cfe4f7';
@@ -684,6 +740,57 @@ function drawBalloon() {
     ctx.fillRect(x + 5, y + 14, 4, 1);
 }
 
+function spawnBoostPlane() {
+    nextBoostAt = performance.now() + 180000 + Math.random() * 120000;
+    boostPlane = { x: PIXEL_W + 12, y: 18 + Math.random() * 26 };
+}
+
+function drawBoostPlane() {
+    if (!boostPlane) return;
+    const x = Math.round(boostPlane.x);
+    const y = Math.round(boostPlane.y + Math.sin(frame * 0.05) * 2);
+    ctx.fillStyle = '#22a06b';
+    ctx.fillRect(x + 2, y + 3, 10, 3);            // fuselage
+    ctx.fillRect(x + 11, y + 4, 3, 1);            // nose
+    ctx.fillStyle = '#0d5c3f';
+    ctx.fillRect(x + 5, y + 1, 4, 1);             // top wing
+    ctx.fillRect(x + 5, y + 6, 4, 1);             // bottom wing
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x + 3, y + 3, 8, 1);             // stripe
+    ctx.fillStyle = '#ffe14d';
+    ctx.fillRect(x + 6, y - 6, 1, 4);             // up arrow
+    ctx.fillRect(x + 5, y - 5, 3, 1);
+}
+
+function drawEffectBadge(cx, y, text, fg, bg, frac) {
+    ctx.font = '9px monospace';
+    const tw = Math.ceil(ctx.measureText(text).width);
+    const w = tw + 8;
+    const h = 14;
+    const bx = Math.round(cx - w / 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(bx - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = bg;
+    ctx.fillRect(bx, y, w, h);
+    ctx.fillStyle = fg;
+    ctx.fillText(text, bx + 4, y + 11);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(bx, y + h - 1, Math.max(1, Math.round(w * frac)), 1);
+}
+
+function drawEffects() {
+    const now = performance.now();
+    const cx = Math.floor(PIXEL_W / 2);
+    let y = 6;
+    if (frenzy.active && now < frenzy.endsAt) {
+        drawEffectBadge(cx, y, 'GOLDEN PLANE ×' + FRENZY_MULT + ' CLICKS', '#ffd23f', '#7a3c00', (frenzy.endsAt - now) / FRENZY_DURATION);
+        y += 16;
+    }
+    if (boost.active && now < boost.endsAt) {
+        drawEffectBadge(cx, y, 'INCOME BOOST ×' + BOOST_MULT, '#8dffc9', '#0b5c3d', (boost.endsAt - now) / BOOST_DURATION);
+    }
+}
+
 function drawScene() {
     // sky
     ctx.fillStyle = '#9ad0ff';
@@ -750,17 +857,19 @@ function drawScene() {
     const totalOwned = state.buildings.reduce((a, b) => a + b, 0);
     drawTrees(Math.min(10, Math.floor(totalOwned / 10)));
 
-    // plane centered, bobbing
+    // plane centered, bobbing (gold while a frenzy is active)
     planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
     planeY = 46 + Math.round(Math.sin(frame * 0.04) * 4);
-    drawPlane(planeX, planeY);
+    drawPlane(planeX, planeY, frenzyActive());
     drawClickHint();
     drawCombo();
     drawBalloon();
+    drawBoostPlane();
+    drawEffects();
 
-    // floating +$ text (crits and balloon payouts are bigger and gold)
+    // floating +$ text (crits, balloon payouts, and boosts are bigger + tinted)
     floaters.forEach(f => {
-        const big = !!f.crit;
+        const big = !!f.crit || !!f.gold;
         const fontPx = big ? 10 : 9;
         ctx.font = fontPx + 'px monospace';
         const tw = Math.ceil(ctx.measureText(f.text).width);
@@ -769,9 +878,9 @@ function drawScene() {
         const ty = Math.round(f.y);
         const w = tw + 8;
         const h = fontPx + 4;
-        ctx.fillStyle = big ? 'rgba(130, 20, 20, 0.9)' : 'rgba(0, 0, 0, 0.78)';
+        ctx.fillStyle = f.gold ? 'rgba(10, 80, 44, 0.92)' : (big ? 'rgba(130, 20, 20, 0.9)' : 'rgba(0, 0, 0, 0.78)');
         ctx.fillRect(tx, ty, w, h);
-        ctx.fillStyle = big ? '#ffd23f' : '#ffffff';
+        ctx.fillStyle = f.gold ? '#8dffc9' : (big ? '#ffd23f' : '#ffffff');
         ctx.fillText(f.text, tx + 4, ty + fontPx + 1);
     });
 }
@@ -781,6 +890,30 @@ function animate() {
     scrollX += 1.2;
 
     const now = performance.now();
+
+    // Golden Plane frenzy event
+    if (frenzy.active && now >= frenzy.endsAt) {
+        frenzy.active = false;
+        frenzy.nextAt = now + 75000 + Math.random() * 45000;
+    }
+    if (!frenzy.active && now >= frenzy.nextAt) {
+        frenzy.active = true;
+        frenzy.endsAt = now + FRENZY_DURATION;
+        state.frenziesTriggered++;
+        showToast('✨ Golden Plane! Clicks ×' + FRENZY_MULT + ' for ' + Math.round(FRENZY_DURATION / 1000) + 's');
+    }
+
+    // income boost plane event
+    if (boost.active && now >= boost.endsAt) {
+        boost.active = false;
+        nextBoostAt = now + 180000 + Math.random() * 120000;
+    }
+    if (!boostPlane && !boost.active && now >= nextBoostAt) spawnBoostPlane();
+    if (boostPlane) {
+        boostPlane.x -= 0.8;
+        if (boostPlane.x < -20) boostPlane = null;
+    }
+
     if (!balloon && now >= nextBalloonAt) spawnBalloon();
     if (balloon) {
         balloon.x -= 0.65;
@@ -817,6 +950,21 @@ canvas.addEventListener('click', (e) => {
         }
     }
 
+    if (boostPlane) {
+        const bx = Math.round(boostPlane.x);
+        const by = Math.round(boostPlane.y + Math.sin(frame * 0.05) * 2);
+        if (px >= bx - 2 && px <= bx + 14 && py >= by - 6 && py <= by + 8) {
+            boost.active = true;
+            boost.endsAt = performance.now() + BOOST_DURATION;
+            state.boostsCaught++;
+            floaters.push({ x: bx, y: by, text: 'BOOST ×' + BOOST_MULT + ' income!', gold: true, life: 55 });
+            boostPlane = null;
+            update();
+            showToast('📈 Income boost! ×' + BOOST_MULT + ' income for ' + Math.round(BOOST_DURATION / 1000) + 's');
+            return;
+        }
+    }
+
     if (px >= planeX && px <= planeX + planeW && py >= planeY - planeHitPad && py <= planeY + planeH + planeHitPad) {
         clickPlane();
     }
@@ -846,7 +994,14 @@ document.addEventListener('keydown', (e) => {
 
 document.getElementById('resetBtn').onclick = () => {
     if (!confirm('Reset all progress? This cannot be undone.')) return;
-    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, prestige: 0, bestCombo: 0, lastSaved: 0 };
+    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, prestige: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
+    combo = 0;
+    comboEndsAt = 0;
+    frenzy.active = false;
+    boost.active = false;
+    boostPlane = null;
+    invalidateLayers();
+    metaSig = '';
     save();
     update();
 };
@@ -868,7 +1023,10 @@ function loadFrom(data) {
     state.balloonsCaught = data.balloonsCaught ?? 0;
     state.prestige = data.prestige ?? 0;
     state.bestCombo = data.bestCombo ?? 0;
+    state.frenziesTriggered = data.frenziesTriggered ?? 0;
+    state.boostsCaught = data.boostsCaught ?? 0;
     state.lastSaved = data.lastSaved ?? 0;
+    invalidateLayers();
 }
 function load() {
     try {
