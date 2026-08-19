@@ -37,8 +37,18 @@ let state = {
     totalEarned: 0,
     achievements: [],
     balloonsCaught: 0,
+    prestige: 0,
+    bestCombo: 0,
     lastSaved: 0
 };
+
+// Building milestones: doubling that building type's income at these ownership counts
+const MILESTONES = [25, 50, 100, 200];
+// Prestige: reset your run for permanent +10% income per point
+const PRESTIGE_DIVISOR = 1e6;
+// Click combo: clicking within the window builds a temporary click multiplier
+const COMBO_WINDOW = 2500;
+const COMBO_CAP = 30;
 
 const ACHIEVEMENTS = [
     { id: 'first_click', name: 'First Flight', desc: 'Click the plane once', check: s => s.totalClicks >= 1 },
@@ -63,6 +73,8 @@ const shopPanel = document.getElementById('shopPanel');
 const shopBackdrop = document.getElementById('shopBackdrop');
 const shopToggle = document.getElementById('shopToggle');
 const shopClose = document.getElementById('shopClose');
+const prestigeInfoEl = document.getElementById('prestigeInfo');
+const prestigeBtn = document.getElementById('prestigeBtn');
 const canvas = document.getElementById('scene');
 const ctx = canvas.getContext('2d');
 
@@ -80,6 +92,9 @@ let floaters = [];
 let lastPlaneClick = performance.now();
 let balloon = null;
 let nextBalloonAt = performance.now() + 25000;
+let combo = 0;
+let comboEndsAt = 0;
+let lastComboMult = 1;
 
 const clouds = [
     { x: 40,  y: 25, w: 12 },
@@ -139,18 +154,39 @@ function buildingBuyInfo(i) {
 function clickCost() {
     return Math.floor(10 * Math.pow(1.5, state.clickLevel));
 }
+function buildingMult(i) {
+    const owned = state.buildings[i];
+    let mult = 1;
+    MILESTONES.forEach(m => { if (owned >= m) mult *= 2; });
+    return mult;
+}
+function nextMilestone(i) {
+    const owned = state.buildings[i];
+    for (const m of MILESTONES) if (owned < m) return m;
+    return null;
+}
 function incomePerSec() {
-    const base = buildings.reduce((sum, b, i) => sum + b.income * state.buildings[i], 0);
+    const base = buildings.reduce((sum, b, i) => sum + b.income * state.buildings[i] * buildingMult(i), 0);
     return base * incomeMult();
 }
 function incomeMult() {
-    return 1 + 0.05 * state.achievements.length;
+    return (1 + 0.05 * state.achievements.length) * (1 + 0.10 * state.prestige);
+}
+function prestigePointsForEarned(x) {
+    return Math.floor(Math.sqrt(x / PRESTIGE_DIVISOR));
+}
+function pendingPrestige() {
+    return Math.max(0, prestigePointsForEarned(state.totalEarned) - state.prestige);
+}
+function comboMult() {
+    return 1 + combo * 0.1;
 }
 function fmt(n) {
     if (n < 1000) return Math.floor(n).toString();
-    const units = ['K', 'M', 'B', 'T', 'Qa', 'Qi'];
+    const units = ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
     let i = -1;
     while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
+    if (i >= units.length - 1) return n.toExponential(2).replace('+', '');
     return n.toFixed(2).replace(/\.?0+$/, '') + units[i];
 }
 function getBuildingLayers() {
@@ -165,7 +201,10 @@ function getBuildingLayers() {
                 x: cursors[layer],
                 yj: ((i * 37 + tier * 13) % 5) - 2
             });
-            cursors[layer] += s.w + 8;
+            // Slight overlap (s.w - 2) so buildings touch/overlap, letting
+            // more of the city fit on screen while back-to-front layering
+            // still gives natural depth.
+            cursors[layer] += s.w - 2;
         }
     });
     layers.forEach((layer, idx) => {
@@ -191,6 +230,60 @@ function buyBuilding(i) {
         update();
     }
 }
+function clickPlane() {
+    const now = performance.now();
+    if (now < comboEndsAt) combo = Math.min(combo + 1, COMBO_CAP);
+    else combo = 1;
+    comboEndsAt = now + COMBO_WINDOW;
+    lastComboMult = comboMult();
+    if (combo > state.bestCombo) state.bestCombo = combo;
+
+    const crit = Math.random() < 0.05;
+    const amount = Math.round(state.clickPower * comboMult() * (crit ? 10 : 1));
+    state.money += amount;
+    state.totalEarned += amount;
+    state.totalClicks++;
+    lastPlaneClick = now;
+    floaters.push({ x: planeX, y: planeY, text: (crit ? 'CRIT +$' : '+$') + fmt(amount), crit: crit, life: 40 });
+    update();
+}
+
+// ---- prestige ----
+function doPrestige() {
+    const gain = pendingPrestige();
+    if (gain <= 0) return;
+    if (!confirm('Prestige for +' + gain + ' prestige point' + (gain > 1 ? 's' : '') + '?\n\nEach point gives a permanent +10% income.\nMoney, buildings, and click power reset; achievements and lifetime stats are kept.')) return;
+    state.prestige += gain;
+    state.money = 0;
+    state.clickPower = 1;
+    state.clickLevel = 0;
+    state.buildings = buildings.map(() => 0);
+    save();
+    update();
+    showToast('⭐ Prestige! +' + gain + ' point' + (gain > 1 ? 's' : '') + ' (+' + (gain * 10) + '% income)');
+}
+
+// ---- save export / import ----
+function exportSave() {
+    const json = JSON.stringify(state);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(json).then(() => showToast('💾 Save copied to clipboard')).catch(() => prompt('Copy your save:', json));
+    } else {
+        prompt('Copy your save:', json);
+    }
+}
+function importSave() {
+    const raw = prompt('Paste your save JSON:');
+    if (!raw) return;
+    try {
+        loadFrom(JSON.parse(raw));
+        save();
+        update();
+        showToast('✅ Save imported');
+    } catch (e) {
+        showToast('❌ Invalid save data');
+    }
+}
 
 // ---- shop UI (built once) ----
 function createShop() {
@@ -206,7 +299,11 @@ function createShop() {
         div.className = 'item';
         const btn = document.createElement('button');
         btn.onclick = () => buyBuilding(i);
+        const sub = document.createElement('div');
+        sub.className = 'item-sub';
+        sub.id = 'bsub' + i;
         div.appendChild(btn);
+        div.appendChild(sub);
         shopItemsEl.appendChild(div);
         return btn;
     });
@@ -262,6 +359,18 @@ function update() {
         buildingBtns[i].disabled = n === 0;
     });
 
+    buildings.forEach((b, i) => {
+        const sub = document.getElementById('bsub' + i);
+        if (!sub) return;
+        const mult = buildingMult(i);
+        const nm = nextMilestone(i);
+        sub.textContent = (mult > 1 ? '×' + mult + ' income' : '') + (nm ? (mult > 1 ? ' · ' : '') + '×2 at ' + nm + ' owned' : '');
+    });
+
+    const pPending = pendingPrestige();
+    prestigeInfoEl.textContent = state.prestige + ' point' + (state.prestige === 1 ? '' : 's') + ' · +' + (state.prestige * 10) + '% income' + (pPending > 0 ? ' — ' + pPending + ' ready to claim!' : '');
+    prestigeBtn.disabled = pPending <= 0;
+
     updateMeta();
 }
 
@@ -272,6 +381,8 @@ function updateMeta() {
         '<div><span class="stat-label">Clicks:</span> ' + fmt(state.totalClicks) + '</div>' +
         '<div><span class="stat-label">Earned:</span> $' + fmt(state.totalEarned) + '</div>' +
         '<div><span class="stat-label">Buildings:</span> ' + owned + '</div>' +
+        '<div><span class="stat-label">Best combo:</span> ×' + state.bestCombo + '</div>' +
+        '<div><span class="stat-label">Prestige:</span> ' + state.prestige + ' (+' + (state.prestige * 10) + '%)</div>' +
         '<div><span class="stat-label">Income bonus:</span> +' + Math.round((incomeMult() - 1) * 100) + '%</div>';
 
     achievementsEl.innerHTML =
@@ -378,19 +489,38 @@ function drawClickHint() {
     if (now - lastPlaneClick < 5000) return;
     const cx = Math.floor(planeX + planeW / 2);
     const pulse = Math.round(Math.sin(now * 0.006) * 2);
-    const ay = planeY - 12 + pulse;
+    const ay = planeY - 16 + pulse;
 
-    ctx.fillStyle = 'rgba(0,0,0,0.75)';
-    ctx.fillRect(cx - 16, ay - 13, 32, 9);
+    // label with white outline so it pops against the sky
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(cx - 21, ay - 15, 42, 13);
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(cx - 20, ay - 14, 40, 11);
     ctx.fillStyle = '#ffe14d';
-    ctx.font = '7px monospace';
-    ctx.fillText('CLICK', cx - 15, ay - 5);
+    ctx.font = '8px monospace';
+    ctx.fillText('CLICK ME', cx - 18, ay - 5);
 
-    // down arrow
-    ctx.fillRect(cx - 1, ay - 3, 2, 6);
-    ctx.fillRect(cx - 3, ay + 1, 6, 2);
-    ctx.fillRect(cx - 2, ay + 3, 4, 2);
-    ctx.fillRect(cx - 1, ay + 5, 2, 2);
+    // bouncy down arrow pointing at the plane
+    ctx.fillStyle = '#ffe14d';
+    ctx.fillRect(cx - 1, ay - 2, 3, 8);
+    ctx.fillRect(cx - 4, ay + 4, 9, 3);
+    ctx.fillRect(cx - 3, ay + 7, 7, 2);
+}
+
+function drawCombo() {
+    if (combo < 2) return;
+    const now = performance.now();
+    const remaining = comboEndsAt - now;
+    if (remaining <= 0) return;
+    const cx = Math.floor(planeX + planeW / 2);
+    const cy = planeY + planeH + 7;
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(cx - 26, cy, 52, 12);
+    ctx.fillStyle = '#ff9f1c';
+    ctx.font = '7px monospace';
+    ctx.fillText('COMBO ×' + combo + ' (' + lastComboMult.toFixed(1) + 'x)', cx - 24, cy + 9);
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillRect(cx - 26, cy + 11, Math.round(52 * (remaining / COMBO_WINDOW)), 1);
 }
 
 function spawnBalloon() {
@@ -493,15 +623,20 @@ function drawScene() {
     planeY = 46 + Math.round(Math.sin(frame * 0.04) * 4);
     drawPlane(planeX, planeY);
     drawClickHint();
+    drawCombo();
     drawBalloon();
 
-    // floating +$ text
+    // floating +$ text (crits and balloon payouts are bigger and gold)
     floaters.forEach(f => {
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
-        ctx.fillRect(f.x, f.y, f.text.length * 5 + 4, 8);
-        ctx.fillStyle = '#fff';
-        ctx.font = '7px monospace';
-        ctx.fillText(f.text, f.x + 2, f.y + 7);
+        const big = !!f.crit;
+        const fontPx = big ? 9 : 8;
+        const w = f.text.length * (big ? 6 : 5) + 6;
+        const h = big ? 12 : 10;
+        ctx.fillStyle = big ? 'rgba(130, 20, 20, 0.9)' : 'rgba(0, 0, 0, 0.78)';
+        ctx.fillRect(f.x, f.y, w, h);
+        ctx.fillStyle = big ? '#ffd23f' : '#ffffff';
+        ctx.font = fontPx + 'px monospace';
+        ctx.fillText(f.text, f.x + 2, f.y + (big ? 9 : 8));
     });
 }
 
@@ -536,7 +671,7 @@ canvas.addEventListener('click', (e) => {
             state.money += balloon.value;
             state.totalEarned += balloon.value;
             state.balloonsCaught++;
-            floaters.push({ x: bx, y: by, text: '+$' + fmt(balloon.value), life: 55 });
+            floaters.push({ x: bx, y: by, text: '+$' + fmt(balloon.value), crit: true, life: 55 });
             balloon = null;
             update();
             return;
@@ -544,25 +679,35 @@ canvas.addEventListener('click', (e) => {
     }
 
     if (px >= planeX && px <= planeX + planeW && py >= planeY - planeHitPad && py <= planeY + planeH + planeHitPad) {
-        const crit = Math.random() < 0.05;
-        const amount = state.clickPower * (crit ? 10 : 1);
-        state.money += amount;
-        state.totalEarned += amount;
-        state.totalClicks++;
-        lastPlaneClick = performance.now();
-        floaters.push({ x: planeX, y: planeY, text: (crit ? 'CRIT +$' : '+$') + fmt(amount), life: 40 });
-        update();
+        clickPlane();
     }
 });
 
-// ---- shop + reset ----
+// ---- shop + reset + prestige + save settings ----
 shopToggle.onclick = openShop;
 shopClose.onclick = closeShop;
 shopBackdrop.onclick = closeShop;
+prestigeBtn.onclick = doPrestige;
+document.getElementById('exportBtn').onclick = exportSave;
+document.getElementById('importBtn').onclick = importSave;
+
+// keyboard shortcuts: Space clicks the plane, Esc closes the shop
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeShop();
+        return;
+    }
+    if (e.code === 'Space' && !shopPanel.classList.contains('open')) {
+        e.preventDefault();
+        // Don't re-trigger a shop button that still has focus
+        if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+        clickPlane();
+    }
+});
 
 document.getElementById('resetBtn').onclick = () => {
     if (!confirm('Reset all progress? This cannot be undone.')) return;
-    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, lastSaved: 0 };
+    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, prestige: 0, bestCombo: 0, lastSaved: 0 };
     save();
     update();
 };
@@ -571,21 +716,26 @@ function save() {
     state.lastSaved = Date.now();
     localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 }
+function loadFrom(data) {
+    state.money = data.money ?? 0;
+    state.clickPower = data.clickPower ?? 1;
+    state.clickLevel = data.clickLevel ?? 0;
+    state.buildings = data.buildings ?? buildings.map(() => 0);
+    while (state.buildings.length < buildings.length) state.buildings.push(0);
+    state.buildings.length = buildings.length;
+    state.totalClicks = data.totalClicks ?? 0;
+    state.totalEarned = data.totalEarned ?? 0;
+    state.achievements = Array.isArray(data.achievements) ? data.achievements : [];
+    state.balloonsCaught = data.balloonsCaught ?? 0;
+    state.prestige = data.prestige ?? 0;
+    state.bestCombo = data.bestCombo ?? 0;
+    state.lastSaved = data.lastSaved ?? 0;
+}
 function load() {
     try {
         const data = JSON.parse(localStorage.getItem(SAVE_KEY));
         if (!data) return;
-        state.money = data.money ?? 0;
-        state.clickPower = data.clickPower ?? 1;
-        state.clickLevel = data.clickLevel ?? 0;
-        state.buildings = data.buildings ?? buildings.map(() => 0);
-        while (state.buildings.length < buildings.length) state.buildings.push(0);
-        state.buildings.length = buildings.length;
-        state.totalClicks = data.totalClicks ?? 0;
-        state.totalEarned = data.totalEarned ?? 0;
-        state.achievements = Array.isArray(data.achievements) ? data.achievements : [];
-        state.balloonsCaught = data.balloonsCaught ?? 0;
-        state.lastSaved = data.lastSaved ?? 0;
+        loadFrom(data);
     } catch (e) {}
 }
 
