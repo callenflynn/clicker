@@ -539,24 +539,55 @@ function doPrestige() {
 }
 
 // ---- save export / import ----
+// Saves are base64-encoded AND checksummed, so casual players can't just
+// decode, edit, and re-import the numbers. This is tamper-evident obfuscation
+// for a purely client-side game — a determined hacker can still reverse it,
+// but it blocks the easy "paste and cheat" path.
+const SAVE_MAGIC = 'C1';
+const SAVE_SALT = 'clih-save-v1-x7q';
+
+function hash32(str) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(16).padStart(8, '0');
+}
+function encodeSave(obj) {
+    const json = JSON.stringify(obj);
+    const b64 = btoa(unescape(encodeURIComponent(json)));
+    return SAVE_MAGIC + '.' + b64 + '.' + hash32(SAVE_SALT + b64);
+}
+function decodeSave(str) {
+    if (!str) throw new Error('empty');
+    const t = str.trim();
+    // Accept old plain-JSON saves for backwards compatibility.
+    if (t.charAt(0) === '{') return JSON.parse(t);
+    const parts = t.split('.');
+    if (parts.length !== 3 || parts[0] !== SAVE_MAGIC) throw new Error('format');
+    if (hash32(SAVE_SALT + parts[1]) !== parts[2]) throw new Error('checksum');
+    return JSON.parse(decodeURIComponent(escape(atob(parts[1]))));
+}
+
 function exportSave() {
-    const json = JSON.stringify(state);
+    const encoded = encodeSave(state);
     if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(json).then(() => showToast('💾 Save copied to clipboard')).catch(() => prompt('Copy your save:', json));
+        navigator.clipboard.writeText(encoded).then(() => showToast('💾 Save copied to clipboard')).catch(() => prompt('Copy your save:', encoded));
     } else {
-        prompt('Copy your save:', json);
+        prompt('Copy your save:', encoded);
     }
 }
 function importSave() {
-    const raw = prompt('Paste your save JSON:');
+    const raw = prompt('Paste your save code:');
     if (!raw) return;
     try {
-        loadFrom(JSON.parse(raw));
+        loadFrom(decodeSave(raw));
         save();
         update();
         showToast('✅ Save imported');
     } catch (e) {
-        showToast('❌ Invalid save data');
+        showToast('❌ Invalid or tampered save data');
     }
 }
 
@@ -1512,7 +1543,7 @@ document.getElementById('resetBtn').onclick = () => {
 
 function save() {
     state.lastSaved = Date.now();
-    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+    localStorage.setItem(SAVE_KEY, encodeSave(state));
 }
 function loadFrom(data) {
     state.money = data.money ?? 0;
@@ -1534,7 +1565,9 @@ function loadFrom(data) {
 }
 function load() {
     try {
-        const data = JSON.parse(localStorage.getItem(SAVE_KEY));
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (!raw) return;
+        const data = decodeSave(raw);
         if (!data) return;
         loadFrom(data);
     } catch (e) {}
