@@ -14,7 +14,13 @@ const buildings = [
     { name: 'Mall',       baseCost: 17000000,     costMult: 1.15, income: 7800 },
     { name: 'Stadium',    baseCost: 200000000,    costMult: 1.15, income: 44000 },
     { name: 'Airport',    baseCost: 2300000000,   costMult: 1.15, income: 260000 },
-    { name: 'Spaceport',  baseCost: 26000000000,  costMult: 1.15, income: 1500000 }
+    { name: 'Spaceport',  baseCost: 26000000000,  costMult: 1.15, income: 1500000 },
+    { name: 'Lunar Base', baseCost: 2.6e11,       costMult: 1.15, income: 8500000 },
+    { name: 'Orbital Station', baseCost: 2.6e12,  costMult: 1.15, income: 48000000 },
+    { name: 'Mars Colony', baseCost: 2.6e13,      costMult: 1.15, income: 260000000 },
+    { name: 'Asteroid Mine', baseCost: 2.6e14,    costMult: 1.15, income: 1400000000 },
+    { name: 'Dyson Swarm', baseCost: 2.6e15,      costMult: 1.15, income: 7500000000 },
+    { name: 'AI Datacenter', baseCost: 2.6e16,    costMult: 1.15, income: 4.5e10, pollution: 1 }
 ];
 
 const BUILDING_STYLES = [
@@ -27,7 +33,13 @@ const BUILDING_STYLES = [
     { w: 28, h: 30, body: '#5b8a72', dark: '#3a5c4a', layer: 1, kind: 'mall' }, // Mall
     { w: 30, h: 24, body: '#9aa0a8', dark: '#6a7078', layer: 1, kind: 'dome' }, // Stadium
     { w: 28, h: 38, body: '#8a93a0', dark: '#5c6470', layer: 2, kind: 'tower' }, // Airport
-    { w: 30, h: 48, body: '#7d6ba8', dark: '#524378', layer: 2, kind: 'tower' }  // Spaceport
+    { w: 30, h: 48, body: '#7d6ba8', dark: '#524378', layer: 2, kind: 'tower' },  // Spaceport
+    { w: 30, h: 34, body: '#c8ccd4', dark: '#7a7f88', layer: 2, kind: 'rocket' }, // Lunar Base
+    { w: 34, h: 40, body: '#6b9fd4', dark: '#3a5a80', layer: 2, kind: 'station' },// Orbital Station
+    { w: 30, h: 28, body: '#b5654a', dark: '#7a3d28', layer: 1, kind: 'dome' },   // Mars Colony
+    { w: 32, h: 30, body: '#8a6d4b', dark: '#54412c', layer: 1, kind: 'drill' },  // Asteroid Mine
+    { w: 36, h: 24, body: '#3fa7ff', dark: '#1f5c8a', layer: 0, kind: 'solar' },  // Dyson Swarm
+    { w: 32, h: 30, body: '#2b3a4a', dark: '#16222c', layer: 1, kind: 'datacenter' } // AI Datacenter
 ];
 
 // Depth bands drawn back-to-front. Taller buildings live further back,
@@ -88,7 +100,14 @@ const ACHIEVEMENTS = [
     { id: 'airport_1', name: 'Clear for Takeoff', desc: 'Own an airport', check: s => s.buildings[8] >= 1 },
     { id: 'spaceport_1', name: 'To Infinity', desc: 'Own a spaceport', check: s => s.buildings[9] >= 1 },
     { id: 'frenzy', name: 'Strike Gold', desc: 'Trigger a Golden Plane frenzy', check: s => s.frenziesTriggered >= 1 },
-    { id: 'boost', name: 'Tailwind', desc: 'Catch an income boost plane', check: s => s.boostsCaught >= 1 }
+    { id: 'boost', name: 'Tailwind', desc: 'Catch an income boost plane', check: s => s.boostsCaught >= 1 },
+    { id: 'lunar_1', name: 'One Small Step', desc: 'Own a Lunar Base', check: s => s.buildings[10] >= 1 },
+    { id: 'station_1', name: 'Orbital', desc: 'Own an Orbital Station', check: s => s.buildings[11] >= 1 },
+    { id: 'mars_1', name: 'Red Planet', desc: 'Own a Mars Colony', check: s => s.buildings[12] >= 1 },
+    { id: 'mine_1', name: 'Belt and Braces', desc: 'Own an Asteroid Mine', check: s => s.buildings[13] >= 1 },
+    { id: 'swarm_1', name: 'Star Power', desc: 'Own a Dyson Swarm', check: s => s.buildings[14] >= 1 },
+    { id: 'datacenter_1', name: 'Compute Core', desc: 'Own an AI Datacenter', check: s => s.buildings[15] >= 1 },
+    { id: 'datacenter_10', name: 'Smog City', desc: 'Own 10 AI Datacenters', check: s => s.buildings[15] >= 10 }
 ];
 
 const moneyEl = document.getElementById('money');
@@ -186,8 +205,43 @@ function buildingBuyInfo(i) {
     const n = buildingsToBuy(i);
     return { n, cost: n > 0 ? bulkCost(i, n) : buildingCost(i) };
 }
+function clickLevelCostAt(level) {
+    return Math.floor(10 * Math.pow(1.5, level));
+}
 function clickCost() {
-    return Math.floor(10 * Math.pow(1.5, state.clickLevel));
+    return clickLevelCostAt(state.clickLevel);
+}
+function clickPowerBulkCost(n) {
+    let total = 0;
+    for (let k = 0; k < n; k++) total += clickLevelCostAt(state.clickLevel + k);
+    return total;
+}
+function clickLevelsAffordable() {
+    let money = state.money;
+    let count = 0;
+    while (count < 50000) {
+        const cost = clickLevelCostAt(state.clickLevel + count);
+        if (cost > money) break;
+        money -= cost;
+        count++;
+    }
+    return count;
+}
+function clickLevelsToBuy() {
+    if (buyAmount === Infinity) return clickLevelsAffordable();
+    let count = 0;
+    let money = state.money;
+    while (count < buyAmount) {
+        const cost = clickLevelCostAt(state.clickLevel + count);
+        if (cost > money) break;
+        money -= cost;
+        count++;
+    }
+    return count;
+}
+function clickPowerBuyInfo() {
+    const n = clickLevelsToBuy();
+    return { n, cost: n > 0 ? clickPowerBulkCost(n) : clickCost() };
 }
 function buildingMult(i) {
     const owned = state.buildings[i];
@@ -202,7 +256,7 @@ function nextMilestone(i) {
 }
 function incomePerSec() {
     const base = buildings.reduce((sum, b, i) => sum + b.income * state.buildings[i] * buildingMult(i), 0);
-    return base * incomeMult() * boostMult();
+    return base * incomeMult() * boostMult() * (1 - pollutionPenalty());
 }
 function incomeMult() {
     return (1 + 0.05 * state.achievements.length) * (1 + 0.10 * state.prestige);
@@ -221,6 +275,12 @@ function boostMult() {
 }
 function frenzyActive() {
     return frenzy.active && performance.now() < frenzy.endsAt;
+}
+function pollution() {
+    return buildings.reduce((sum, b, i) => sum + (b.pollution || 0) * state.buildings[i], 0);
+}
+function pollutionPenalty() {
+    return Math.min(pollution() * 0.005, 0.5);
 }
 function fmt(n) {
     if (n < 1000) return Math.floor(n).toString();
@@ -317,10 +377,11 @@ function ensureTiles() {
 
 // ---- buy actions ----
 function buyClickPower() {
-    if (state.money >= clickCost()) {
-        state.money -= clickCost();
-        state.clickLevel++;
-        state.clickPower++;
+    const { n, cost } = clickPowerBuyInfo();
+    if (n > 0 && state.money >= cost) {
+        state.money -= cost;
+        state.clickLevel += n;
+        state.clickPower += n;
         update();
     }
 }
@@ -355,6 +416,19 @@ function clickPlane() {
     floaters.push({ x: planeX, y: planeY, text: text, crit: crit || frenzyOn, life: 40 });
     update();
 }
+
+// Space-to-click, registered in the capture phase so it runs before the
+// plain keydown handler lower in the file. Holding Space would otherwise
+// fire repeated keydown events; stopImmediatePropagation keeps the later
+// handler from also clicking on the same press.
+document.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || shopPanel.classList.contains('open')) return;
+    e.preventDefault();
+    if (e.repeat) { e.stopImmediatePropagation(); return; }
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+    clickPlane();
+    e.stopImmediatePropagation();
+}, true);
 
 // ---- prestige ----
 function doPrestige() {
@@ -459,8 +533,9 @@ function update() {
     moneyEl.textContent = '$' + fmt(state.money);
     incomeEl.textContent = '$' + fmt(incomePerSec()) + ' / sec';
 
-    cpBtn.textContent = 'Click Power (lvl ' + state.clickLevel + ') - $' + fmt(clickCost());
-    cpBtn.disabled = state.money < clickCost();
+    const cpInfo = clickPowerBuyInfo();
+    cpBtn.textContent = 'Click Power (lvl ' + state.clickLevel + ') - $' + fmt(cpInfo.cost) + (cpInfo.n > 1 ? ' (×' + cpInfo.n + ')' : '');
+    cpBtn.disabled = cpInfo.n === 0;
 
     buildings.forEach((b, i) => {
         const { n, cost } = buildingBuyInfo(i);
@@ -473,7 +548,9 @@ function update() {
         if (!sub) return;
         const mult = buildingMult(i);
         const nm = nextMilestone(i);
-        sub.textContent = (mult > 1 ? '×' + mult + ' income' : '') + (nm ? (mult > 1 ? ' · ' : '') + '×2 at ' + nm + ' owned' : '');
+        let text = (mult > 1 ? '×' + mult + ' income' : '') + (nm ? (mult > 1 ? ' · ' : '') + '×2 at ' + nm + ' owned' : '');
+        if (b.pollution) text += (text ? ' · ' : '') + '⚠️ -0.5% income each';
+        sub.textContent = text;
     });
 
     const pPending = pendingPrestige();
@@ -487,7 +564,7 @@ function updateMeta() {
     const owned = state.buildings.reduce((a, b) => a + b, 0);
     // Only re-render stats/achievements when something actually changed;
     // update() runs 10×/sec so rebuilding this HTML every tick is wasteful.
-    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.prestige, state.achievements.length, state.frenziesTriggered, state.boostsCaught].join(',');
+    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.prestige, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution()].join(',');
     if (sig === metaSig) return;
     metaSig = sig;
 
@@ -500,7 +577,8 @@ function updateMeta() {
         '<div><span class="stat-label">Prestige:</span> ' + state.prestige + ' (+' + (state.prestige * 10) + '%)</div>' +
         '<div><span class="stat-label">Frenzies:</span> ' + state.frenziesTriggered + '</div>' +
         '<div><span class="stat-label">Boosts:</span> ' + state.boostsCaught + '</div>' +
-        '<div><span class="stat-label">Income bonus:</span> +' + Math.round((incomeMult() - 1) * 100) + '%</div>';
+        '<div><span class="stat-label">Income bonus:</span> +' + Math.round((incomeMult() - 1) * 100) + '%</div>' +
+        '<div><span class="stat-label">Pollution:</span> ' + pollution() + (pollution() > 0 ? ' (-' + Math.round(pollutionPenalty() * 100) + '% income)' : '') + '</div>';
 
     achievementsEl.innerHTML =
         '<h3>Achievements (' + state.achievements.length + '/' + ACHIEVEMENTS.length + ')</h3>' +
@@ -609,11 +687,100 @@ function drawTower(c, x, y, w, h, body, dark) {
     c.fillRect(x + Math.floor(w / 2) - 1, y - 7, 2, 7);
 }
 
+function drawRocket(c, x, y, w, h, body, dark) {
+    // launch pad
+    c.fillStyle = dark;
+    c.fillRect(x + 1, y + h - 3, w - 2, 3);
+    c.fillStyle = '#8a93a0';
+    c.fillRect(x + 2, y + h - 5, w - 4, 2);
+    // rocket on the pad
+    const rx = x + Math.floor(w / 2) - 2;
+    const rh = h - 7;
+    c.fillStyle = '#e8e8f0';
+    c.fillRect(rx, y, 4, rh);
+    c.fillStyle = '#d33';
+    c.fillRect(rx, y + 2, 4, 2);          // nose stripe
+    c.fillRect(rx - 1, y + rh - 4, 2, 4); // left fin
+    c.fillRect(rx + 3, y + rh - 4, 2, 4); // right fin
+    c.fillStyle = '#7cd8ff';
+    c.fillRect(rx + 1, y + rh, 2, 2);     // window
+}
+
+function drawStation(c, x, y, w, h, body, dark) {
+    // support gantry
+    c.fillStyle = dark;
+    c.fillRect(x + Math.floor(w / 2) - 4, y + h - 2, 8, 2);
+    c.fillRect(x + Math.floor(w / 2) - 1, y + 6, 2, h - 8);
+    // orbital ring
+    c.fillStyle = body;
+    c.fillRect(x + 2, y, w - 4, 6);
+    c.fillRect(x + 4, y - 2, w - 8, 2);
+    c.fillStyle = '#cfe4f7';
+    c.fillRect(x + Math.floor(w / 2) - 3, y + 1, 6, 4);
+}
+
+function drawDrill(c, x, y, w, h, body, dark) {
+    // rocky mound
+    c.fillStyle = body;
+    c.fillRect(x + 1, y + h - 5, w - 2, 5);
+    c.fillRect(x + 3, y + h - 8, w - 6, 3);
+    c.fillRect(x + 6, y + h - 11, w - 12, 3);
+    // drill rig
+    c.fillStyle = '#9aa0a8';
+    c.fillRect(x + Math.floor(w / 2) - 1, y + 2, 2, h - 8);
+    c.fillStyle = dark;
+    c.fillRect(x + Math.floor(w / 2) - 3, y, 6, 3);
+}
+
+function drawSolar(c, x, y, w, h, body, dark) {
+    // support legs
+    c.fillStyle = dark;
+    c.fillRect(x + 2, y + h - 3, 2, 3);
+    c.fillRect(x + w - 4, y + h - 3, 2, 3);
+    c.fillRect(x + 1, y + h - 2, w - 2, 2);
+    // panel array
+    c.fillStyle = body;
+    for (let px = x + 2; px < x + w - 4; px += 5) {
+        c.fillRect(px, y + 2, 4, 6);
+    }
+    c.fillStyle = '#cfe4f7';
+    for (let px = x + 3; px < x + w - 3; px += 5) {
+        c.fillRect(px, y + 3, 2, 4);
+    }
+}
+
+function drawDatacenter(c, x, y, w, h, body, dark) {
+    // dark server-hall body
+    c.fillStyle = body;
+    c.fillRect(x, y, w, h);
+    c.fillStyle = dark;
+    c.fillRect(x, y, w, 2);
+    // glowing server racks
+    c.fillStyle = '#22d3ee';
+    for (let wy = y + 3; wy < y + h - 3; wy += 4) {
+        for (let wx = x + 2; wx < x + w - 2; wx += 4) {
+            c.fillRect(wx, wy, 2, 2);
+        }
+    }
+    // cooling stacks venting smoke
+    c.fillStyle = dark;
+    c.fillRect(x + 3, y - 4, 3, 4);
+    c.fillRect(x + w - 6, y - 4, 3, 4);
+    c.fillStyle = 'rgba(150,150,150,0.9)';
+    c.fillRect(x + 4, y - 6, 1, 2);
+    c.fillRect(x + w - 5, y - 6, 1, 2);
+}
+
 function drawBuilding(c, kind, x, y, w, h, body, dark) {
     if (kind === 'warehouse') return drawWarehouse(c, x, y, w, h, body, dark);
     if (kind === 'mall') return drawMall(c, x, y, w, h, body, dark);
     if (kind === 'dome') return drawDome(c, x, y, w, h, body, dark);
     if (kind === 'tower') return drawTower(c, x, y, w, h, body, dark);
+    if (kind === 'rocket') return drawRocket(c, x, y, w, h, body, dark);
+    if (kind === 'station') return drawStation(c, x, y, w, h, body, dark);
+    if (kind === 'drill') return drawDrill(c, x, y, w, h, body, dark);
+    if (kind === 'solar') return drawSolar(c, x, y, w, h, body, dark);
+    if (kind === 'datacenter') return drawDatacenter(c, x, y, w, h, body, dark);
     drawBrickBuilding(c, x, y, w, h, body, dark);
 }
 
@@ -851,6 +1018,16 @@ function drawTowerBeacons() {
     });
 }
 
+function drawSmog() {
+    const p = pollution();
+    if (p <= 0) return;
+    const alpha = Math.min(p * 0.03, 0.65);
+    ctx.fillStyle = 'rgba(105, 95, 80, ' + alpha.toFixed(3) + ')';
+    ctx.fillRect(0, SKYLINE_Y - 8, PIXEL_W, PIXEL_H - SKYLINE_Y + 8);
+    ctx.fillStyle = 'rgba(90, 82, 70, ' + (alpha * 0.7).toFixed(3) + ')';
+    ctx.fillRect(0, SKYLINE_Y - 14, PIXEL_W, 8);
+}
+
 function drawScene() {
     // sky
     ctx.fillStyle = '#9ad0ff';
@@ -901,6 +1078,7 @@ function drawScene() {
         });
     }
     drawTowerBeacons();
+    drawSmog();
 
     // foreground grass strip (fast parallax, closest layer)
     ctx.fillStyle = '#2c6e34';
