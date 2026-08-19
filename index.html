@@ -11,8 +11,12 @@
     <div id="money">$0</div>
     <div id="income">$0 / sec</div>
     <div id="pollutionMeter">
-        <span>🏭 Pollution: <span id="pmValue">0</span></span>
-        <div class="pm-track"><div id="pmFill"></div></div>
+        <div class="pm-head">🏭 Pollution: <span id="pmValue">0</span></div>
+        <div class="stack">
+            <div class="puffs" id="pmPuffs"><span class="puff p1"></span><span class="puff p2"></span><span class="puff p3"></span></div>
+            <div class="stack-cap"></div>
+            <div class="stack-body"><div id="pmFill"></div></div>
+        </div>
     </div>
     <canvas id="scene" width="320" height="150"></canvas>
     <div class="hint">Click the plane to earn money. Buy buildings to grow your city.</div>
@@ -35,6 +39,11 @@
                 <h3>Prestige</h3>
                 <div id="prestigeInfo"></div>
                 <button id="prestigeBtn">Prestige</button>
+            </div>
+            <div class="prestige" id="rebirth">
+                <h3>Rebirth</h3>
+                <div id="rebirthInfo"></div>
+                <button id="rebirthBtn">Rebirth</button>
             </div>
             <div class="buy-modes" id="buyModes"></div>
             <div id="shopItems"></div>

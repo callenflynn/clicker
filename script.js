@@ -21,7 +21,11 @@ const buildings = [
     { name: 'Mars Colony', baseCost: 2.6e13,      costMult: 1.15, income: 260000000 },
     { name: 'Asteroid Mine', baseCost: 2.6e14,    costMult: 1.15, income: 1400000000 },
     { name: 'Dyson Swarm', baseCost: 2.6e15,      costMult: 1.15, income: 7500000000 },
-    { name: 'AI Datacenter', baseCost: 2.6e16,    costMult: 1.15, income: 4.5e10, pollution: 1 }
+    { name: 'AI Datacenter', baseCost: 2.6e16,    costMult: 1.15, income: 4.5e10, pollution: 1 },
+    { name: 'Recycling Plant', baseCost: 2.6e17,  costMult: 1.15, income: 2.5e11, pollutionReduction: 8, map: 'earth' },
+    { name: 'Hydro Dam',      baseCost: 8e17,      costMult: 1.15, income: 7e11, pollutionReduction: 3, map: 'earth' },
+    { name: 'Terraforming Lab', baseCost: 2.6e18, costMult: 1.15, income: 1.8e12, map: 'mars' },
+    { name: 'Quantum Relay',  baseCost: 8e18,      costMult: 1.15, income: 5e12, map: 'mars' }
 ];
 
 const BUILDING_STYLES = [
@@ -41,7 +45,11 @@ const BUILDING_STYLES = [
     { w: 30, h: 28, body: '#b5654a', dark: '#7a3d28', layer: 1, kind: 'dome' },   // Mars Colony
     { w: 32, h: 30, body: '#8a6d4b', dark: '#54412c', layer: 1, kind: 'drill' },  // Asteroid Mine
     { w: 36, h: 24, body: '#3fa7ff', dark: '#1f5c8a', layer: 0, kind: 'solar' },  // Dyson Swarm
-    { w: 32, h: 30, body: '#2b3a4a', dark: '#16222c', layer: 1, kind: 'datacenter' } // AI Datacenter
+    { w: 32, h: 30, body: '#2b3a4a', dark: '#16222c', layer: 1, kind: 'datacenter' }, // AI Datacenter
+    { w: 30, h: 24, body: '#4f9d69', dark: '#285a3a', layer: 1, kind: 'recycler' }, // Recycling Plant
+    { w: 36, h: 32, body: '#5b8fa8', dark: '#2f5668', layer: 2, kind: 'hydro' }, // Hydro Dam
+    { w: 34, h: 30, body: '#6bbf78', dark: '#31734a', layer: 1, kind: 'terraform' }, // Terraforming Lab
+    { w: 34, h: 38, body: '#b88cff', dark: '#5f3e9c', layer: 2, kind: 'quantum' } // Quantum Relay
 ];
 
 // Depth bands drawn back-to-front. Taller buildings live further back,
@@ -62,6 +70,7 @@ let state = {
     achievements: [],
     balloonsCaught: 0,
     prestige: 0,
+    rebirths: 0,
     bestCombo: 0,
     frenziesTriggered: 0,
     boostsCaught: 0,
@@ -72,6 +81,9 @@ let state = {
 const MILESTONES = [25, 50, 100, 200];
 // Prestige: reset your run for permanent +10% income per point
 const PRESTIGE_DIVISOR = 1e6;
+// Rebirth: clean the planet for a permanent +25% income each time, but the
+// Earth pollution required for the next rebirth keeps growing.
+const REBIRTH_BASE = 300;
 // Click combo: clicking within the window builds a temporary click multiplier
 const COMBO_WINDOW = 2500;
 const COMBO_CAP = 30;
@@ -110,7 +122,11 @@ const ACHIEVEMENTS = [
     { id: 'mine_1', name: 'Belt and Braces', desc: 'Own an Asteroid Mine', check: s => s.buildings[14] >= 1 },
     { id: 'swarm_1', name: 'Star Power', desc: 'Own a Dyson Swarm', check: s => s.buildings[15] >= 1 },
     { id: 'datacenter_1', name: 'Compute Core', desc: 'Own an AI Datacenter', check: s => s.buildings[16] >= 1 },
-    { id: 'datacenter_10', name: 'Smog City', desc: 'Own 10 AI Datacenters', check: s => s.buildings[16] >= 10 }
+    { id: 'datacenter_10', name: 'Smog City', desc: 'Own 10 AI Datacenters', check: s => s.buildings[16] >= 10 },
+    { id: 'recycler_1', name: 'Clean Machine', desc: 'Own a Recycling Plant', check: s => s.buildings[17] >= 1 },
+    { id: 'hydro_1', name: 'Water Works', desc: 'Own a Hydro Dam', check: s => s.buildings[18] >= 1 },
+    { id: 'terraform_1', name: 'Green Mars', desc: 'Own a Terraforming Lab', check: s => s.buildings[19] >= 1 },
+    { id: 'quantum_1', name: 'Quantum Leap', desc: 'Own a Quantum Relay', check: s => s.buildings[20] >= 1 }
 ];
 
 const moneyEl = document.getElementById('money');
@@ -129,6 +145,9 @@ const shopToggle = document.getElementById('shopToggle');
 const shopClose = document.getElementById('shopClose');
 const prestigeInfoEl = document.getElementById('prestigeInfo');
 const prestigeBtn = document.getElementById('prestigeBtn');
+const rebirthInfoEl = document.getElementById('rebirthInfo');
+const rebirthBtn = document.getElementById('rebirthBtn');
+const pmPuffsEl = document.getElementById('pmPuffs');
 const canvas = document.getElementById('scene');
 const ctx = canvas.getContext('2d');
 const clickSoundEl = document.getElementById('clickSound');
@@ -264,14 +283,14 @@ function nextMilestone(i) {
 }
 // Each building tier belongs to Earth (city tiers) or Mars (space tiers).
 function buildingMap(i) {
-    return i >= 10 ? 'mars' : 'earth';
+    return buildings[i].map || (i >= 10 ? 'mars' : 'earth');
 }
 function incomePerSec() {
     const base = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0);
     return base * incomeMult() * boostMult() * (1 - pollutionPenalty());
 }
 function incomeMult() {
-    return (1 + 0.05 * state.achievements.length) * (1 + 0.10 * state.prestige);
+    return (1 + 0.05 * state.achievements.length) * (1 + 0.10 * state.prestige) * (1 + 0.25 * state.rebirths);
 }
 function prestigePointsForEarned(x) {
     return Math.floor(Math.sqrt(x / PRESTIGE_DIVISOR));
@@ -289,7 +308,7 @@ function frenzyActive() {
     return frenzy.active && performance.now() < frenzy.endsAt;
 }
 function pollution() {
-    return buildings.reduce((sum, b, i) => sum + (b.pollution || 0) * state.buildings[i], 0);
+    return Math.max(0, buildings.reduce((sum, b, i) => sum + ((b.pollution || 0) - (b.pollutionReduction || 0)) * state.buildings[i], 0));
 }
 function pollutionPenalty() {
     return Math.min(pollution() * 0.005, 0.5);
@@ -297,10 +316,17 @@ function pollutionPenalty() {
 // Factories pollute Earth specifically; this drives the yellowing grass,
 // graying sky, extra smog clouds, and the Earth pollution meter.
 function earthPollution() {
-    return buildings.reduce((sum, b, i) => sum + (buildingMap(i) === 'earth' && b.pollution ? b.pollution * state.buildings[i] : 0), 0);
+    return Math.max(0, buildings.reduce((sum, b, i) => sum + (buildingMap(i) === 'earth' ? ((b.pollution || 0) - (b.pollutionReduction || 0)) * state.buildings[i] : 0), 0));
 }
 function earthPollutionLevel() {
     return Math.min(earthPollution() / 20, 1);
+}
+function rebirthRequirement(n) {
+    const r = n === undefined ? state.rebirths : n;
+    return REBIRTH_BASE * Math.pow(2, r);
+}
+function rebirthProgress() {
+    return Math.min(earthPollution() / rebirthRequirement(), 1);
 }
 function smoothPollutionLevel() {
     return easedPollution;
@@ -538,6 +564,22 @@ function doPrestige() {
     showToast('⭐ Prestige! +' + gain + ' point' + (gain > 1 ? 's' : '') + ' (+' + (gain * 10) + '% income)');
 }
 
+// ---- rebirth ----
+function doRebirth() {
+    const need = rebirthRequirement();
+    if (earthPollution() < need) return;
+    if (!confirm('Rebirth for +25% permanent income?\n\nThis cleans Earth\'s smog but resets money, buildings, and click power. Your next rebirth needs ' + rebirthRequirement(state.rebirths + 1) + ' Earth pollution.')) return;
+    state.rebirths++;
+    state.money = 0;
+    state.clickPower = 1;
+    state.clickLevel = 0;
+    state.buildings = buildings.map(() => 0);
+    invalidateLayers();
+    save();
+    update();
+    showToast('🌱 Rebirth #' + state.rebirths + '! +25% income forever');
+}
+
 // ---- save export / import ----
 // Saves are base64-encoded AND checksummed, so casual players can't just
 // decode, edit, and re-import the numbers. This is tamper-evident obfuscation
@@ -734,12 +776,18 @@ function update() {
         const nm = nextMilestone(i);
         let text = (mult > 1 ? '×' + mult + ' income' : '') + (nm ? (mult > 1 ? ' · ' : '') + '×2 at ' + nm + ' owned' : '');
         if (b.pollution) text += (text ? ' · ' : '') + '⚠️ -' + (b.pollution * 0.5) + '% income each';
+        if (b.pollutionReduction) text += (text ? ' · ' : '') + '♻️ -' + b.pollutionReduction + ' pollution';
         sub.textContent = text;
     });
 
     const pPending = pendingPrestige();
     prestigeInfoEl.textContent = state.prestige + ' point' + (state.prestige === 1 ? '' : 's') + ' · +' + (state.prestige * 10) + '% income' + (pPending > 0 ? ' — ' + pPending + ' ready to claim!' : '');
     prestigeBtn.disabled = pPending <= 0;
+
+    const rNeed = rebirthRequirement();
+    const rp = rebirthProgress();
+    rebirthInfoEl.textContent = state.rebirths + ' rebirth' + (state.rebirths === 1 ? '' : 's') + ' · +' + (state.rebirths * 25) + '% income' + (rp >= 1 ? ' — ready to rebirth!' : ' — needs ' + rNeed + ' Earth pollution');
+    rebirthBtn.disabled = rp < 1;
 
     updateMeta();
 }
@@ -748,7 +796,7 @@ function updateMeta() {
     const owned = state.buildings.reduce((a, b) => a + b, 0);
     // Only re-render stats/achievements when something actually changed;
     // update() runs 10×/sec so rebuilding this HTML every tick is wasteful.
-    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.prestige, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution(), earthPollution(), currentMap].join(',');
+    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.prestige, state.rebirths, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution(), earthPollution(), currentMap].join(',');
     if (sig === metaSig) return;
     metaSig = sig;
 
@@ -759,18 +807,19 @@ function updateMeta() {
         '<div><span class="stat-label">Buildings:</span> ' + owned + '</div>' +
         '<div><span class="stat-label">Best combo:</span> ×' + state.bestCombo + '</div>' +
         '<div><span class="stat-label">Prestige:</span> ' + state.prestige + ' (+' + (state.prestige * 10) + '%)</div>' +
+        '<div><span class="stat-label">Rebirths:</span> ' + state.rebirths + ' (+' + (state.rebirths * 25) + '%)</div>' +
         '<div><span class="stat-label">Frenzies:</span> ' + state.frenziesTriggered + '</div>' +
         '<div><span class="stat-label">Boosts:</span> ' + state.boostsCaught + '</div>' +
         '<div><span class="stat-label">Income bonus:</span> +' + Math.round((incomeMult() - 1) * 100) + '%</div>' +
         '<div><span class="stat-label">Pollution:</span> ' + pollution() + (pollution() > 0 ? ' (-' + Math.round(pollutionPenalty() * 100) + '% income)' : '') + '</div>';
 
-    // Earth pollution meter (visible only on Earth)
+    // Earth pollution meter (visible only on Earth) — a smokestack that fills
+    // toward the current rebirth requirement.
     const ep = earthPollution();
-    const epLevel = earthPollutionLevel();
     pollutionMeterEl.classList.toggle('visible', currentMap === 'earth');
     pmValueEl.textContent = ep;
-    pmFillEl.style.width = Math.round(epLevel * 100) + '%';
-    pmFillEl.style.background = ep === 0 ? '#4ade80' : (epLevel < 0.5 ? '#facc15' : '#ef4444');
+    pmFillEl.style.height = Math.round(rebirthProgress() * 100) + '%';
+    pmPuffsEl.style.opacity = Math.min(ep / 60, 1).toFixed(2);
 
     achievementsEl.innerHTML =
         '<h3>Achievements (' + state.achievements.length + '/' + ACHIEVEMENTS.length + ')</h3>' +
@@ -941,6 +990,52 @@ function drawSolar(c, x, y, w, h, body, dark) {
     }
 }
 
+function drawRecycling(c, x, y, w, h, body, dark) {
+    drawBrickBuilding(c, x, y, w, h, body, dark);
+    c.fillStyle = '#b8f28b';
+    c.fillRect(x + 5, y + 5, 8, 3);
+    c.fillRect(x + 9, y + 8, 4, 5);
+    c.fillStyle = dark;
+    c.fillRect(x + w - 9, y + h - 7, 6, 7);
+    c.fillStyle = '#d5f5e3';
+    c.fillRect(x + 4, y - 4, 3, 4);
+    c.fillRect(x + w - 8, y - 5, 3, 5);
+}
+
+function drawHydro(c, x, y, w, h, body, dark) {
+    c.fillStyle = body;
+    c.fillRect(x, y + 8, w, h - 8);
+    c.fillStyle = dark;
+    c.fillRect(x, y + 6, w, 3);
+    c.fillRect(x + 4, y + 12, 3, h - 12);
+    c.fillRect(x + w - 7, y + 12, 3, h - 12);
+    c.fillStyle = '#9fe8ff';
+    for (let yy = y + 12; yy < y + h - 3; yy += 5) c.fillRect(x + 9, yy, w - 18, 2);
+    c.fillStyle = '#d6f7ff';
+    c.fillRect(x + Math.floor(w / 2) - 2, y + 1, 4, 5);
+}
+
+function drawTerraform(c, x, y, w, h, body, dark) {
+    drawDome(c, x, y + 3, w, h - 3, body, dark);
+    c.fillStyle = '#b8f28b';
+    c.fillRect(x + 4, y + h - 5, w - 8, 2);
+    c.fillRect(x + Math.floor(w / 2) - 1, y - 2, 2, 5);
+}
+
+function drawQuantum(c, x, y, w, h, body, dark) {
+    c.fillStyle = dark;
+    c.fillRect(x + 5, y + h - 4, w - 10, 4);
+    c.fillStyle = body;
+    c.fillRect(x + 3, y + 6, 4, h - 10);
+    c.fillRect(x + w - 7, y + 6, 4, h - 10);
+    c.fillRect(x + 6, y + 3, w - 12, 4);
+    c.fillStyle = '#f5e9ff';
+    c.fillRect(x + 9, y + 9, w - 18, h - 16);
+    c.fillStyle = '#d8b4fe';
+    c.fillRect(x + 13, y + 12, 3, 3);
+    c.fillRect(x + w - 16, y + h - 10, 3, 3);
+}
+
 function drawDatacenter(c, x, y, w, h, body, dark) {
     // dark server-hall body
     c.fillStyle = body;
@@ -993,6 +1088,10 @@ function drawBuilding(c, kind, x, y, w, h, body, dark) {
     if (kind === 'drill') return drawDrill(c, x, y, w, h, body, dark);
     if (kind === 'solar') return drawSolar(c, x, y, w, h, body, dark);
     if (kind === 'datacenter') return drawDatacenter(c, x, y, w, h, body, dark);
+    if (kind === 'recycler') return drawRecycling(c, x, y, w, h, body, dark);
+    if (kind === 'hydro') return drawHydro(c, x, y, w, h, body, dark);
+    if (kind === 'terraform') return drawTerraform(c, x, y, w, h, body, dark);
+    if (kind === 'quantum') return drawQuantum(c, x, y, w, h, body, dark);
     if (kind === 'factory') return drawFactory(c, x, y, w, h, body, dark);
     drawBrickBuilding(c, x, y, w, h, body, dark);
 }
@@ -1510,6 +1609,7 @@ shopToggle.onclick = openShop;
 shopClose.onclick = closeShop;
 shopBackdrop.onclick = closeShop;
 prestigeBtn.onclick = doPrestige;
+rebirthBtn.onclick = doRebirth;
 document.getElementById('exportBtn').onclick = exportSave;
 document.getElementById('importBtn').onclick = importSave;
 
@@ -1529,7 +1629,7 @@ document.addEventListener('keydown', (e) => {
 
 document.getElementById('resetBtn').onclick = () => {
     if (!confirm('Reset all progress? This cannot be undone.')) return;
-    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, prestige: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
+    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, prestige: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
     combo = 0;
     comboEndsAt = 0;
     frenzy.active = false;
@@ -1557,6 +1657,7 @@ function loadFrom(data) {
     state.achievements = Array.isArray(data.achievements) ? data.achievements : [];
     state.balloonsCaught = data.balloonsCaught ?? 0;
     state.prestige = data.prestige ?? 0;
+    state.rebirths = data.rebirths ?? 0;
     state.bestCombo = data.bestCombo ?? 0;
     state.frenziesTriggered = data.frenziesTriggered ?? 0;
     state.boostsCaught = data.boostsCaught ?? 0;
