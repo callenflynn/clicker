@@ -5,19 +5,29 @@ const GROUND_Y = 128;
 
 // Building types (passive income, scaling price)
 const buildings = [
-    { name: 'House',      baseCost: 15,     costMult: 1.15, income: 0.1 },
-    { name: 'Shop',       baseCost: 100,    costMult: 1.15, income: 1   },
-    { name: 'Apartment',  baseCost: 1100,   costMult: 1.15, income: 8   },
-    { name: 'Office',     baseCost: 12000,  costMult: 1.15, income: 47  },
-    { name: 'Skyscraper', baseCost: 130000, costMult: 1.15, income: 260 }
+    { name: 'House',      baseCost: 15,           costMult: 1.15, income: 0.1 },
+    { name: 'Shop',       baseCost: 100,          costMult: 1.15, income: 1   },
+    { name: 'Apartment',  baseCost: 1100,         costMult: 1.15, income: 8   },
+    { name: 'Office',     baseCost: 12000,        costMult: 1.15, income: 47  },
+    { name: 'Skyscraper', baseCost: 130000,       costMult: 1.15, income: 260 },
+    { name: 'Warehouse',  baseCost: 1500000,      costMult: 1.15, income: 1400 },
+    { name: 'Mall',       baseCost: 17000000,     costMult: 1.15, income: 7800 },
+    { name: 'Stadium',    baseCost: 200000000,    costMult: 1.15, income: 44000 },
+    { name: 'Airport',    baseCost: 2300000000,   costMult: 1.15, income: 260000 },
+    { name: 'Spaceport',  baseCost: 26000000000,  costMult: 1.15, income: 1500000 }
 ];
 
 const BUILDING_STYLES = [
-    { w: 14, h: 16, body: '#8b3a3a', dark: '#5e2323', layer: 0 }, // House
-    { w: 18, h: 20, body: '#7a4a2a', dark: '#4e2d18', layer: 0 }, // Shop
-    { w: 16, h: 28, body: '#b07840', dark: '#7a4d22', layer: 1 }, // Apartment
-    { w: 20, h: 34, body: '#6b6f76', dark: '#464a50', layer: 2 }, // Office
-    { w: 22, h: 44, body: '#4d5a6b', dark: '#303b49', layer: 2 }  // Skyscraper
+    { w: 14, h: 16, body: '#8b3a3a', dark: '#5e2323', layer: 0, kind: 'brick' }, // House
+    { w: 18, h: 20, body: '#7a4a2a', dark: '#4e2d18', layer: 0, kind: 'brick' }, // Shop
+    { w: 16, h: 28, body: '#b07840', dark: '#7a4d22', layer: 1, kind: 'brick' }, // Apartment
+    { w: 20, h: 34, body: '#6b6f76', dark: '#464a50', layer: 2, kind: 'brick' }, // Office
+    { w: 22, h: 44, body: '#4d5a6b', dark: '#303b49', layer: 2, kind: 'brick' }, // Skyscraper
+    { w: 26, h: 20, body: '#8a6d4b', dark: '#5c4730', layer: 0, kind: 'warehouse' }, // Warehouse
+    { w: 28, h: 30, body: '#5b8a72', dark: '#3a5c4a', layer: 1, kind: 'mall' }, // Mall
+    { w: 30, h: 24, body: '#9aa0a8', dark: '#6a7078', layer: 1, kind: 'dome' }, // Stadium
+    { w: 28, h: 38, body: '#8a93a0', dark: '#5c6470', layer: 2, kind: 'tower' }, // Airport
+    { w: 30, h: 48, body: '#7d6ba8', dark: '#524378', layer: 2, kind: 'tower' }  // Spaceport
 ];
 
 // Depth bands drawn back-to-front. Taller buildings live further back,
@@ -59,7 +69,16 @@ const ACHIEVEMENTS = [
     { id: 'buildings_200', name: 'Tycoon', desc: 'Own 200 buildings', check: s => s.buildings.reduce((a, b) => a + b, 0) >= 200 },
     { id: 'earn_1000', name: 'Big Spender', desc: 'Earn $1,000 total', check: s => s.totalEarned >= 1000 },
     { id: 'earn_1m', name: 'Millionaire', desc: 'Earn $1,000,000 total', check: s => s.totalEarned >= 1000000 },
-    { id: 'balloon', name: 'Up, Up & Away', desc: 'Catch a hot air balloon', check: s => s.balloonsCaught >= 1 }
+    { id: 'earn_1b', name: 'Billionaire', desc: 'Earn $1,000,000,000 total', check: s => s.totalEarned >= 1e9 },
+    { id: 'click_10000', name: 'Autopilot', desc: 'Click the plane 10,000 times', check: s => s.totalClicks >= 10000 },
+    { id: 'buildings_500', name: 'Metropolis', desc: 'Own 500 buildings', check: s => s.buildings.reduce((a, b) => a + b, 0) >= 500 },
+    { id: 'buildings_1000', name: 'Mega City', desc: 'Own 1,000 buildings', check: s => s.buildings.reduce((a, b) => a + b, 0) >= 1000 },
+    { id: 'balloon', name: 'Up, Up & Away', desc: 'Catch a hot air balloon', check: s => s.balloonsCaught >= 1 },
+    { id: 'warehouse_25', name: 'Logistics Lord', desc: 'Own 25 warehouses', check: s => s.buildings[5] >= 25 },
+    { id: 'mall_10', name: 'Retail King', desc: 'Own 10 malls', check: s => s.buildings[6] >= 10 },
+    { id: 'stadium_5', name: 'Home Field Advantage', desc: 'Own 5 stadiums', check: s => s.buildings[7] >= 5 },
+    { id: 'airport_1', name: 'Clear for Takeoff', desc: 'Own an airport', check: s => s.buildings[8] >= 1 },
+    { id: 'spaceport_1', name: 'To Infinity', desc: 'Own a spaceport', check: s => s.buildings[9] >= 1 }
 ];
 
 const moneyEl = document.getElementById('money');
@@ -95,6 +114,8 @@ let nextBalloonAt = performance.now() + 25000;
 let combo = 0;
 let comboEndsAt = 0;
 let lastComboMult = 1;
+let birds = [];
+let nextBirdsAt = performance.now() + 45000;
 
 const clouds = [
     { x: 40,  y: 25, w: 12 },
@@ -447,6 +468,64 @@ function drawBrickBuilding(x, y, w, h, body, dark) {
     }
 }
 
+function drawWarehouse(x, y, w, h, body, dark) {
+    drawBrickBuilding(x, y, w, h, body, dark);
+    // sawtooth roof
+    ctx.fillStyle = dark;
+    for (let rx = x + 1; rx < x + w - 2; rx += 5) {
+        ctx.fillRect(rx, y - 2, 4, 2);
+    }
+    // loading bay
+    ctx.fillStyle = dark;
+    ctx.fillRect(x + w - 9, y + h - 6, 6, 6);
+}
+
+function drawMall(x, y, w, h, body, dark) {
+    drawBrickBuilding(x, y, w, h, body, dark);
+    // rooftop sign
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillRect(x + Math.floor(w / 2) - 5, y - 3, 10, 3);
+    // entrance awning
+    ctx.fillStyle = dark;
+    ctx.fillRect(x + Math.floor(w / 2) - 4, y + h - 5, 8, 5);
+}
+
+function drawDome(x, y, w, h, body, dark) {
+    const baseH = Math.ceil(h * 0.45);
+    const domeH = h - baseH;
+    ctx.fillStyle = body;
+    ctx.fillRect(x, y + domeH, w, baseH);
+    for (let yy = 1; yy <= domeH; yy++) {
+        const rowW = Math.max(2, Math.round(w * Math.pow(yy / domeH, 2)));
+        ctx.fillRect(x + Math.floor((w - rowW) / 2), y + yy - 1, rowW, 1);
+    }
+    // panel stripes on the dome
+    ctx.fillStyle = dark;
+    for (let sx = x + 3; sx < x + w - 2; sx += 6) {
+        ctx.fillRect(sx, y + 1, 1, domeH - 1);
+    }
+}
+
+function drawTower(x, y, w, h, body, dark) {
+    drawBrickBuilding(x, y, w, h, body, dark);
+    // antenna mast
+    ctx.fillStyle = '#999';
+    ctx.fillRect(x + Math.floor(w / 2) - 1, y - 7, 2, 7);
+    // blinking beacon
+    if (frame % 10 < 5) {
+        ctx.fillStyle = '#ff5c5c';
+        ctx.fillRect(x + Math.floor(w / 2) - 2, y - 9, 4, 2);
+    }
+}
+
+function drawBuilding(kind, x, y, w, h, body, dark) {
+    if (kind === 'warehouse') return drawWarehouse(x, y, w, h, body, dark);
+    if (kind === 'mall') return drawMall(x, y, w, h, body, dark);
+    if (kind === 'dome') return drawDome(x, y, w, h, body, dark);
+    if (kind === 'tower') return drawTower(x, y, w, h, body, dark);
+    drawBrickBuilding(x, y, w, h, body, dark);
+}
+
 function drawPlane(x, y) {
     ctx.fillStyle = '#d33';
     ctx.fillRect(x + 1, y + 1, 2, 2);            // tail fin
@@ -484,27 +563,66 @@ function drawSkyline() {
     ctx.fillRect(0, SKYLINE_Y - 1, PIXEL_W, 2);
 }
 
+function spawnBirds() {
+    nextBirdsAt = performance.now() + 40000 + Math.random() * 30000;
+    const count = 3 + Math.floor(Math.random() * 3);
+    const baseY = 12 + Math.random() * 22;
+    const speed = 0.5 + Math.random() * 0.4;
+    birds = [];
+    for (let i = 0; i < count; i++) {
+        birds.push({ x: -12 - i * 14, y: baseY + (Math.random() * 4 - 2), speed });
+    }
+}
+
+function drawBirds() {
+    birds.forEach(b => {
+        const x = Math.round(b.x);
+        const y = Math.round(b.y);
+        const wing = Math.sin(frame * 0.25 + b.x) > 0 ? 2 : 1;
+        ctx.fillStyle = '#2d2d33';
+        ctx.fillRect(x - 3, y - wing + 1, 3, 1);
+        ctx.fillRect(x, y - wing + 1, 3, 1);
+    });
+}
+
+function drawTrees(count) {
+    for (let i = 0; i < count; i++) {
+        const tx = Math.round(((i * 41 + 17 - scrollX * 1.6) % PIXEL_W + PIXEL_W) % PIXEL_W);
+        const ty = PIXEL_H - 11;
+        ctx.fillStyle = '#5c3a1e';
+        ctx.fillRect(tx + 1, ty, 2, 3);
+        ctx.fillStyle = i % 2 ? '#2f7a2f' : '#358335';
+        ctx.fillRect(tx - 2, ty - 4, 6, 4);
+        ctx.fillRect(tx, ty - 6, 2, 2);
+    }
+}
+
 function drawClickHint() {
     const now = performance.now();
     if (now - lastPlaneClick < 5000) return;
     const cx = Math.floor(planeX + planeW / 2);
     const pulse = Math.round(Math.sin(now * 0.006) * 2);
-    const ay = planeY - 16 + pulse;
+    const ay = Math.round(planeY - 16 + pulse);
 
     // label with white outline so it pops against the sky
+    ctx.font = '9px monospace';
+    const text = 'CLICK ME';
+    const tw = Math.ceil(ctx.measureText(text).width);
+    const w = tw + 8;
+    const h = 13;
+    const bx = Math.round(cx - w / 2);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 21, ay - 15, 42, 13);
+    ctx.fillRect(bx - 1, ay - h - 1, w + 2, h + 2);
     ctx.fillStyle = '#111111';
-    ctx.fillRect(cx - 20, ay - 14, 40, 11);
+    ctx.fillRect(bx, ay - h, w, h);
     ctx.fillStyle = '#ffe14d';
-    ctx.font = '8px monospace';
-    ctx.fillText('CLICK ME', cx - 18, ay - 5);
+    ctx.fillText(text, bx + 4, ay - 2);
 
     // bouncy down arrow pointing at the plane
     ctx.fillStyle = '#ffe14d';
-    ctx.fillRect(cx - 1, ay - 2, 3, 8);
-    ctx.fillRect(cx - 4, ay + 4, 9, 3);
-    ctx.fillRect(cx - 3, ay + 7, 7, 2);
+    ctx.fillRect(cx - 1, ay, 3, 8);
+    ctx.fillRect(cx - 4, ay + 6, 9, 3);
+    ctx.fillRect(cx - 3, ay + 9, 7, 2);
 }
 
 function drawCombo() {
@@ -514,13 +632,20 @@ function drawCombo() {
     if (remaining <= 0) return;
     const cx = Math.floor(planeX + planeW / 2);
     const cy = planeY + planeH + 7;
-    ctx.fillStyle = 'rgba(0,0,0,0.75)';
-    ctx.fillRect(cx - 26, cy, 52, 12);
+    ctx.font = '9px monospace';
+    const text = 'COMBO ×' + combo + ' (' + lastComboMult.toFixed(1) + 'x)';
+    const tw = Math.ceil(ctx.measureText(text).width);
+    const w = tw + 8;
+    const h = 14;
+    const bx = Math.round(cx - w / 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(bx - 1, cy - 1, w + 2, h + 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(bx, cy, w, h);
     ctx.fillStyle = '#ff9f1c';
-    ctx.font = '7px monospace';
-    ctx.fillText('COMBO ×' + combo + ' (' + lastComboMult.toFixed(1) + 'x)', cx - 24, cy + 9);
+    ctx.fillText(text, bx + 4, cy + 11);
     ctx.fillStyle = '#ffd23f';
-    ctx.fillRect(cx - 26, cy + 11, Math.round(52 * (remaining / COMBO_WINDOW)), 1);
+    ctx.fillRect(bx, cy + h - 1, Math.round(w * (remaining / COMBO_WINDOW)), 1);
 }
 
 function spawnBalloon() {
@@ -575,6 +700,9 @@ function drawScene() {
         ctx.fillRect(cx, c.y, c.w, 4);
     });
 
+    // occasional flock of birds
+    drawBirds();
+
     // ground plane from the horizon down
     ctx.fillStyle = '#3f9b3f';
     ctx.fillRect(0, SKYLINE_Y, PIXEL_W, PIXEL_H - SKYLINE_Y);
@@ -604,7 +732,7 @@ function drawScene() {
                 if (x + s.w <= 0 || x >= PIXEL_W) return;
                 ctx.fillStyle = 'rgba(20, 50, 20, 0.25)';
                 ctx.fillRect(x + 1, baseY, s.w - 2, 2);
-                drawBrickBuilding(x, baseY - s.h + b.yj, s.w, s.h, s.body, s.dark);
+                drawBuilding(s.kind, x, baseY - s.h + b.yj, s.w, s.h, s.body, s.dark);
             });
         });
     }
@@ -618,6 +746,10 @@ function drawScene() {
         ctx.fillRect(gx, PIXEL_H - 8, 3, 8);
     }
 
+    // trees: the bigger your city, the more greenery fills the foreground
+    const totalOwned = state.buildings.reduce((a, b) => a + b, 0);
+    drawTrees(Math.min(10, Math.floor(totalOwned / 10)));
+
     // plane centered, bobbing
     planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
     planeY = 46 + Math.round(Math.sin(frame * 0.04) * 4);
@@ -629,14 +761,18 @@ function drawScene() {
     // floating +$ text (crits and balloon payouts are bigger and gold)
     floaters.forEach(f => {
         const big = !!f.crit;
-        const fontPx = big ? 9 : 8;
-        const w = f.text.length * (big ? 6 : 5) + 6;
-        const h = big ? 12 : 10;
-        ctx.fillStyle = big ? 'rgba(130, 20, 20, 0.9)' : 'rgba(0, 0, 0, 0.78)';
-        ctx.fillRect(f.x, f.y, w, h);
-        ctx.fillStyle = big ? '#ffd23f' : '#ffffff';
+        const fontPx = big ? 10 : 9;
         ctx.font = fontPx + 'px monospace';
-        ctx.fillText(f.text, f.x + 2, f.y + (big ? 9 : 8));
+        const tw = Math.ceil(ctx.measureText(f.text).width);
+        // Round to whole pixels so scaled-up text stays crisp, not blurry
+        const tx = Math.round(f.x);
+        const ty = Math.round(f.y);
+        const w = tw + 8;
+        const h = fontPx + 4;
+        ctx.fillStyle = big ? 'rgba(130, 20, 20, 0.9)' : 'rgba(0, 0, 0, 0.78)';
+        ctx.fillRect(tx, ty, w, h);
+        ctx.fillStyle = big ? '#ffd23f' : '#ffffff';
+        ctx.fillText(f.text, tx + 4, ty + fontPx + 1);
     });
 }
 
@@ -650,6 +786,9 @@ function animate() {
         balloon.x -= 0.65;
         if (balloon.x < -24) balloon = null;
     }
+    if (!birds.length && now >= nextBirdsAt) spawnBirds();
+    birds.forEach(b => { b.x += b.speed; });
+    birds = birds.filter(b => b.x < PIXEL_W + 12);
 
     floaters = floaters.filter(f => f.life > 0);
     floaters.forEach(f => { f.y -= 0.5; f.life--; });
