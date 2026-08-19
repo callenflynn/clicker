@@ -4,6 +4,30 @@ button { padding: 10px 16px; font-size: 15px; cursor: pointer; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 #money { font-size: 26px; margin: 4px; }
 #income { color: #555; margin-bottom: 8px; }
+#pollutionMeter {
+    display: none;
+    margin: 6px auto 0;
+    width: min(100%, calc((100vh - 230px) * 320 / 150));
+    max-width: 480px;
+    font-size: 13px;
+    color: #4b5563;
+    text-align: left;
+}
+#pollutionMeter.visible { display: block; }
+.pm-track {
+    height: 8px;
+    margin-top: 4px;
+    background: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    overflow: hidden;
+}
+#pmFill {
+    height: 100%;
+    width: 0%;
+    background: #4ade80;
+    transition: width 0.3s ease, background 0.3s ease;
+}
 canvas {
     display: block;
     box-sizing: border-box;

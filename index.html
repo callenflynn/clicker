@@ -10,6 +10,10 @@
     <h1>clih</h1>
     <div id="money">$0</div>
     <div id="income">$0 / sec</div>
+    <div id="pollutionMeter">
+        <span>🏭 Pollution: <span id="pmValue">0</span></span>
+        <div class="pm-track"><div id="pmFill"></div></div>
+    </div>
     <canvas id="scene" width="320" height="150"></canvas>
     <div class="hint">Click the plane to earn money. Buy buildings to grow your city.</div>
 
@@ -47,6 +51,7 @@
     </div>
     <div id="toasts"></div>
 
+    <audio id="clickSound" src="dragon-studio-mouse-click-sound-376877.mp3" preload="auto"></audio>
     <script src="script.js"></script>
     <div id="version">v__VERSION__</div>
 </body>

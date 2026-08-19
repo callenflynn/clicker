@@ -115,6 +115,9 @@ const ACHIEVEMENTS = [
 
 const moneyEl = document.getElementById('money');
 const incomeEl = document.getElementById('income');
+const pollutionMeterEl = document.getElementById('pollutionMeter');
+const pmValueEl = document.getElementById('pmValue');
+const pmFillEl = document.getElementById('pmFill');
 const shopItemsEl = document.getElementById('shopItems');
 const buyModesEl = document.getElementById('buyModes');
 const statsEl = document.getElementById('stats');
@@ -128,6 +131,7 @@ const prestigeInfoEl = document.getElementById('prestigeInfo');
 const prestigeBtn = document.getElementById('prestigeBtn');
 const canvas = document.getElementById('scene');
 const ctx = canvas.getContext('2d');
+const clickSoundEl = document.getElementById('clickSound');
 
 let cpBtn = null;
 let buildingBtns = [];
@@ -152,6 +156,7 @@ let frenzy = { active: false, endsAt: 0, nextAt: performance.now() + 90000 };
 let boost = { active: false, endsAt: 0 };
 let boostPlane = null;
 let nextBoostAt = performance.now() + 200000;
+let easedPollution = 0;
 
 const clouds = [
     { x: 40,  y: 25, w: 12 },
@@ -289,6 +294,27 @@ function pollution() {
 function pollutionPenalty() {
     return Math.min(pollution() * 0.005, 0.5);
 }
+// Factories pollute Earth specifically; this drives the yellowing grass,
+// graying sky, extra smog clouds, and the Earth pollution meter.
+function earthPollution() {
+    return buildings.reduce((sum, b, i) => sum + (buildingMap(i) === 'earth' && b.pollution ? b.pollution * state.buildings[i] : 0), 0);
+}
+function earthPollutionLevel() {
+    return Math.min(earthPollution() / 20, 1);
+}
+function smoothPollutionLevel() {
+    return easedPollution;
+}
+function hexToRgb(h) {
+    return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+}
+function mixColor(a, b, t) {
+    const ca = hexToRgb(a), cb = hexToRgb(b);
+    const r = Math.round(ca[0] + (cb[0] - ca[0]) * t);
+    const g = Math.round(ca[1] + (cb[1] - ca[1]) * t);
+    const bl = Math.round(ca[2] + (cb[2] - ca[2]) * t);
+    return 'rgb(' + r + ',' + g + ',' + bl + ')';
+}
 function fmt(n) {
     if (n < 1000) return Math.floor(n).toString();
     const units = ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
@@ -305,6 +331,11 @@ let beaconList = [];
 let tilesDirty = true;
 let metaSig = '';
 
+// Persistent building slots so buying one type never reflows (and visually
+// deletes) buildings of another type. These are synced lazily when counts change.
+let placementSlots = { earth: [[], [], []], mars: [[], [], []] };
+let placementCounts = buildings.map(() => 0);
+
 function invalidateLayers() { layersDirty = true; tilesDirty = true; }
 
 function getBuildingLayers() {
@@ -314,27 +345,71 @@ function getBuildingLayers() {
     return cachedLayers;
 }
 
-function buildBuildingLayers() {
-    const layers = LAYERS.map(() => ({ list: [], width: PIXEL_W }));
-    const cursors = LAYERS.map(() => 0);
+function syncPlacements() {
+    let changed = false;
+    for (let tier = 0; tier < buildings.length; tier++) {
+        if (state.buildings[tier] !== placementCounts[tier]) { changed = true; break; }
+    }
+    if (!changed) return;
+
+    // Decreases (prestige/reset/import) rebuild from scratch.
+    const anyDecrease = buildings.some((b, tier) => state.buildings[tier] < placementCounts[tier]);
+    if (anyDecrease) { buildPlacementsFromScratch(); return; }
+
+    // Only increases: append new buildings at the end of their layer so
+    // existing buildings keep their exact slot and never shift away.
     buildings.forEach((b, tier) => {
-        if (buildingMap(tier) !== currentMap) return;
+        const prev = placementCounts[tier];
+        const current = state.buildings[tier];
+        if (current <= prev) return;
         const s = BUILDING_STYLES[tier];
-        const layer = s.layer;
+        const list = placementSlots[buildingMap(tier)][s.layer];
+        let cursor = 0;
+        if (list.length) {
+            const last = list[list.length - 1];
+            cursor = last.x + BUILDING_STYLES[last.tier].w - 2;
+        }
+        for (let i = prev; i < current; i++) {
+            list.push({ tier, x: cursor, yj: ((i * 37 + tier * 13) % 5) - 2 });
+            cursor += s.w - 2;
+        }
+        placementCounts[tier] = current;
+    });
+}
+
+function buildPlacementsFromScratch() {
+    placementSlots = { earth: [[], [], []], mars: [[], [], []] };
+    const cursors = { earth: [0, 0, 0], mars: [0, 0, 0] };
+    buildings.forEach((b, tier) => {
+        const s = BUILDING_STYLES[tier];
+        const map = buildingMap(tier);
         for (let i = 0; i < state.buildings[tier]; i++) {
-            layers[layer].list.push({
+            placementSlots[map][s.layer].push({
                 tier,
-                x: cursors[layer],
+                x: cursors[map][s.layer],
                 yj: ((i * 37 + tier * 13) % 5) - 2
             });
-            // Slight overlap (s.w - 2) so buildings touch/overlap, letting
-            // more of the city fit on screen while back-to-front layering
-            // still gives natural depth.
-            cursors[layer] += s.w - 2;
+            cursors[map][s.layer] += s.w - 2;
         }
+        placementCounts[tier] = state.buildings[tier];
     });
-    layers.forEach((layer, idx) => {
-        if (cursors[idx] > layer.width) layer.width = cursors[idx];
+}
+
+function buildBuildingLayers() {
+    syncPlacements();
+    const layers = LAYERS.map(() => ({ list: [], width: PIXEL_W }));
+    placementSlots[currentMap].forEach((list, li) => {
+        layers[li].list = list.slice();
+    });
+    // Width must include the last building's full body, not just the cursor,
+    // or the tile renderer clips the trailing building at the seam.
+    layers.forEach((layer) => {
+        let width = PIXEL_W;
+        layer.list.forEach(b => {
+            const right = b.x + BUILDING_STYLES[b.tier].w;
+            if (right > width) width = right;
+        });
+        layer.width = width;
     });
     return layers;
 }
@@ -402,7 +477,16 @@ function buyBuilding(i) {
         update();
     }
 }
+function playClickSound() {
+    if (!clickSoundEl) return;
+    try {
+        clickSoundEl.currentTime = 0;
+        const p = clickSoundEl.play();
+        if (p) p.catch(() => {});
+    } catch (e) {}
+}
 function clickPlane() {
+    playClickSound();
     const now = performance.now();
     if (now < comboEndsAt) combo = Math.min(combo + 1, COMBO_CAP);
     else combo = 1;
@@ -633,7 +717,7 @@ function updateMeta() {
     const owned = state.buildings.reduce((a, b) => a + b, 0);
     // Only re-render stats/achievements when something actually changed;
     // update() runs 10×/sec so rebuilding this HTML every tick is wasteful.
-    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.prestige, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution()].join(',');
+    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.prestige, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution(), earthPollution(), currentMap].join(',');
     if (sig === metaSig) return;
     metaSig = sig;
 
@@ -648,6 +732,14 @@ function updateMeta() {
         '<div><span class="stat-label">Boosts:</span> ' + state.boostsCaught + '</div>' +
         '<div><span class="stat-label">Income bonus:</span> +' + Math.round((incomeMult() - 1) * 100) + '%</div>' +
         '<div><span class="stat-label">Pollution:</span> ' + pollution() + (pollution() > 0 ? ' (-' + Math.round(pollutionPenalty() * 100) + '% income)' : '') + '</div>';
+
+    // Earth pollution meter (visible only on Earth)
+    const ep = earthPollution();
+    const epLevel = earthPollutionLevel();
+    pollutionMeterEl.classList.toggle('visible', currentMap === 'earth');
+    pmValueEl.textContent = ep;
+    pmFillEl.style.width = Math.round(epLevel * 100) + '%';
+    pmFillEl.style.background = ep === 0 ? '#4ade80' : (epLevel < 0.5 ? '#facc15' : '#ef4444');
 
     achievementsEl.innerHTML =
         '<h3>Achievements (' + state.achievements.length + '/' + ACHIEVEMENTS.length + ')</h3>' +
@@ -910,30 +1002,30 @@ function drawPlane(x, y, gold) {
 function drawMarsRocket(x, y, gold) {
     const body = gold ? '#ffe08a' : '#e8e8f0';
     const fin = gold ? '#e8a23a' : '#d33';
-    // nose cone (points left, direction of travel)
-    ctx.fillStyle = fin;
-    ctx.fillRect(x + 3, y + 5, 3, 3);
-    ctx.fillRect(x + 2, y + 6, 1, 1);
-    // fuselage
-    ctx.fillStyle = body;
-    ctx.fillRect(x + 6, y + 5, 9, 3);
-    // window
-    ctx.fillStyle = '#7cd8ff';
-    ctx.fillRect(x + 8, y + 6, 2, 1);
-    // stripe
-    ctx.fillStyle = fin;
-    ctx.fillRect(x + 11, y + 6, 2, 1);
-    // rear fins
-    ctx.fillStyle = fin;
-    ctx.fillRect(x + 14, y + 3, 2, 2);
-    ctx.fillRect(x + 14, y + 8, 2, 2);
-    // flame (exhaust out the back, animated)
+    // exhaust flame out the back (left); the rocket flies right, like the plane
     ctx.fillStyle = '#ff9f1c';
     if (frame % 6 < 3) {
-        ctx.fillRect(x + 16, y + 5, 3, 3);
+        ctx.fillRect(x, y + 5, 3, 3);
     } else {
-        ctx.fillRect(x + 16, y + 6, 2, 1);
+        ctx.fillRect(x + 1, y + 5, 2, 2);
     }
+    // small rear fins (back-left)
+    ctx.fillStyle = fin;
+    ctx.fillRect(x + 2, y + 2, 2, 3);
+    ctx.fillRect(x + 2, y + 8, 2, 3);
+    // fuselage
+    ctx.fillStyle = body;
+    ctx.fillRect(x + 4, y + 5, 10, 3);
+    // stripe + window toward the front
+    ctx.fillStyle = fin;
+    ctx.fillRect(x + 6, y + 6, 3, 1);
+    ctx.fillStyle = '#7cd8ff';
+    ctx.fillRect(x + 10, y + 6, 2, 1);
+    // nose cone pointing right (direction of travel)
+    ctx.fillStyle = fin;
+    ctx.fillRect(x + 14, y + 5, 3, 3);
+    ctx.fillRect(x + 17, y + 5, 1, 1);
+    ctx.fillRect(x + 18, y + 6, 1, 1);
     if (gold) {
         ctx.fillStyle = 'rgba(255,210,63,0.55)';
         ctx.fillRect(x - 1, y - 1, planeW + 2, 1);
@@ -943,8 +1035,9 @@ function drawMarsRocket(x, y, gold) {
 
 function drawSkyline() {
     const mars = currentMap === 'mars';
+    const ep = mars ? 0 : smoothPollutionLevel();
     // distant background buildings (slow parallax, hazy silhouette)
-    ctx.fillStyle = mars ? '#d8936c' : '#a9c8ea';
+    ctx.fillStyle = mars ? '#d8936c' : mixColor('#a9c8ea', '#98a0a8', ep);
     skylineBuildings.forEach(b => {
         const sx = ((b.x - scrollX * 0.35) % SKYLINE_SPAN + SKYLINE_SPAN) % SKYLINE_SPAN;
         [sx - SKYLINE_SPAN, sx, sx + SKYLINE_SPAN].forEach(x => {
@@ -953,7 +1046,7 @@ function drawSkyline() {
         });
     });
     // haze where the city meets the sky
-    ctx.fillStyle = mars ? '#e0a47c' : '#cfe4f7';
+    ctx.fillStyle = mars ? '#e0a47c' : mixColor('#cfe4f7', '#a7adb4', ep);
     ctx.fillRect(0, SKYLINE_Y - 1, PIXEL_W, 2);
 }
 
@@ -980,15 +1073,46 @@ function drawBirds() {
 }
 
 function drawTrees(count) {
+    drawEarthPollution();
+    const ep = currentMap === 'earth' ? smoothPollutionLevel() : 0;
     for (let i = 0; i < count; i++) {
         const tx = Math.round(((i * 41 + 17 - scrollX * 1.6) % PIXEL_W + PIXEL_W) % PIXEL_W);
         const ty = PIXEL_H - 11;
         ctx.fillStyle = '#5c3a1e';
         ctx.fillRect(tx + 1, ty, 2, 3);
-        ctx.fillStyle = i % 2 ? '#2f7a2f' : '#358335';
+        ctx.fillStyle = mixColor(i % 2 ? '#2f7a2f' : '#358335', '#b09b3e', ep);
         ctx.fillRect(tx - 2, ty - 4, 6, 4);
         ctx.fillRect(tx, ty - 6, 2, 2);
     }
+}
+
+function drawEarthPollution() {
+    // Ease toward the real level so the grass and sky yellow/gray gradually.
+    const target = currentMap === 'earth' ? earthPollutionLevel() : 0;
+    easedPollution += (target - easedPollution) * 0.04;
+    const ep = Math.max(0, Math.min(1, easedPollution));
+    if (ep < 0.01) return;
+
+    // Gray out the sky as factories pollute.
+    ctx.fillStyle = 'rgba(92, 96, 102, ' + (ep * 0.5).toFixed(3) + ')';
+    ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
+
+    // Extra dark smog clouds drift across the sky.
+    const cloudCount = Math.round(ep * 6);
+    for (let i = 0; i < cloudCount; i++) {
+        const cx = ((i * 61 + 7 - scrollX * 0.55) % (PIXEL_W + 80) + (PIXEL_W + 80)) % (PIXEL_W + 80) - 40;
+        const cy = 12 + ((i * 31) % 30);
+        ctx.fillStyle = 'rgba(118, 122, 128, ' + (0.35 + ep * 0.35).toFixed(3) + ')';
+        ctx.fillRect(cx, cy, 18 + (i % 3) * 6, 4);
+        ctx.fillRect(cx + 3, cy - 2, 12 + (i % 3) * 4, 2);
+    }
+
+    // Yellow the grass: the open ground below the buildings gets a light
+    // coat, and the foreground strip (already drawn) gets an extra coat.
+    ctx.fillStyle = 'rgba(165, 148, 58, ' + (ep * 0.45).toFixed(3) + ')';
+    ctx.fillRect(0, GROUND_Y, PIXEL_W, PIXEL_H - GROUND_Y);
+    ctx.fillStyle = 'rgba(165, 148, 58, ' + (ep * 0.85).toFixed(3) + ')';
+    ctx.fillRect(0, PIXEL_H - 12, PIXEL_W, 12);
 }
 
 function drawClickHint() {
