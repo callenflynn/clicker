@@ -230,16 +230,23 @@ function fmt(n) {
     if (i >= units.length - 1) return n.toExponential(2).replace('+', '');
     return n.toFixed(2).replace(/\.?0+$/, '') + units[i];
 }
+const TILE_W = 1024;
 let cachedLayers = null;
 let layersDirty = true;
+let layerTiles = [];
+let beaconList = [];
+let tilesDirty = true;
 let metaSig = '';
-function invalidateLayers() { layersDirty = true; }
+
+function invalidateLayers() { layersDirty = true; tilesDirty = true; }
+
 function getBuildingLayers() {
     if (!layersDirty && cachedLayers) return cachedLayers;
     cachedLayers = buildBuildingLayers();
     layersDirty = false;
     return cachedLayers;
 }
+
 function buildBuildingLayers() {
     const layers = LAYERS.map(() => ({ list: [], width: PIXEL_W }));
     const cursors = LAYERS.map(() => 0);
@@ -262,6 +269,50 @@ function buildBuildingLayers() {
         if (cursors[idx] > layer.width) layer.width = cursors[idx];
     });
     return layers;
+}
+
+// Pre-render each depth layer into fixed-width offscreen tiles. This is the
+// key late-game optimization: per frame we blit a few tiles with drawImage
+// instead of issuing hundreds/thousands of fillRect calls per building.
+function buildLayerTiles(li, layerData) {
+    const baseY = GROUND_Y - LAYERS[li].groundOffset;
+    const tileCount = Math.max(1, Math.ceil(layerData.width / TILE_W));
+    const tiles = [];
+    for (let t = 0; t < tileCount; t++) {
+        const c = document.createElement('canvas');
+        c.width = Math.min(TILE_W, layerData.width - t * TILE_W);
+        c.height = PIXEL_H;
+        tiles.push({ canvas: c, ctx: c.getContext('2d'), x: t * TILE_W });
+    }
+    layerData.list.forEach(b => {
+        const s = BUILDING_STYLES[b.tier];
+        const first = Math.floor(b.x / TILE_W);
+        const last = Math.floor((b.x + s.w - 1) / TILE_W);
+        for (let t = first; t <= last; t++) {
+            const tile = tiles[t];
+            if (!tile) continue;
+            const sx = b.x - tile.x;
+            tile.ctx.fillStyle = 'rgba(20, 50, 20, 0.25)';
+            tile.ctx.fillRect(sx + 1, baseY, s.w - 2, 2);
+            drawBuilding(tile.ctx, s.kind, sx, baseY - s.h + b.yj, s.w, s.h, s.body, s.dark);
+        }
+    });
+    return tiles;
+}
+
+function ensureTiles() {
+    if (!tilesDirty) return;
+    const layers = getBuildingLayers();
+    layerTiles = layers.map((ld, li) => buildLayerTiles(li, ld));
+    beaconList = [];
+    layers.forEach((ld, li) => {
+        const baseY = GROUND_Y - LAYERS[li].groundOffset;
+        ld.list.forEach(b => {
+            const s = BUILDING_STYLES[b.tier];
+            if (s.kind === 'tower') beaconList.push({ li, b, s, baseY });
+        });
+    });
+    tilesDirty = false;
 }
 
 // ---- buy actions ----
@@ -483,92 +534,87 @@ function showToast(text) {
 }
 
 // ---- pixel-art drawing ----
-function drawBrickBuilding(x, y, w, h, body, dark) {
-    ctx.fillStyle = body;
-    ctx.fillRect(x, y, w, h);
+function drawBrickBuilding(c, x, y, w, h, body, dark) {
+    c.fillStyle = body;
+    c.fillRect(x, y, w, h);
 
-    ctx.fillStyle = dark;
+    c.fillStyle = dark;
     const brickH = 3;
     for (let row = 0; row * brickH < h; row++) {
         const yy = y + row * brickH;
-        ctx.fillRect(x, yy, w, 1);
+        c.fillRect(x, yy, w, 1);
         const off = (row % 2) * 3;
         for (let col = off; col < w; col += 6) {
-            ctx.fillRect(x + col, yy, 1, brickH);
+            c.fillRect(x + col, yy, 1, brickH);
         }
     }
 
-    ctx.fillStyle = '#ffd23f';
+    c.fillStyle = '#ffd23f';
     for (let wx = x + 2; wx < x + w - 2; wx += 5) {
         for (let wy = y + 3; wy < y + h - 4; wy += 6) {
-            ctx.fillRect(wx, wy, 2, 3);
+            c.fillRect(wx, wy, 2, 3);
         }
     }
 
     if (w >= 20) { // chimney for big buildings
-        ctx.fillStyle = dark;
-        ctx.fillRect(x + w - 6, y - 5, 3, 5);
-        ctx.fillStyle = '#999';
-        ctx.fillRect(x + w - 6, y - 6, 3, 1);
+        c.fillStyle = dark;
+        c.fillRect(x + w - 6, y - 5, 3, 5);
+        c.fillStyle = '#999';
+        c.fillRect(x + w - 6, y - 6, 3, 1);
     }
 }
 
-function drawWarehouse(x, y, w, h, body, dark) {
-    drawBrickBuilding(x, y, w, h, body, dark);
+function drawWarehouse(c, x, y, w, h, body, dark) {
+    drawBrickBuilding(c, x, y, w, h, body, dark);
     // sawtooth roof
-    ctx.fillStyle = dark;
+    c.fillStyle = dark;
     for (let rx = x + 1; rx < x + w - 2; rx += 5) {
-        ctx.fillRect(rx, y - 2, 4, 2);
+        c.fillRect(rx, y - 2, 4, 2);
     }
     // loading bay
-    ctx.fillStyle = dark;
-    ctx.fillRect(x + w - 9, y + h - 6, 6, 6);
+    c.fillStyle = dark;
+    c.fillRect(x + w - 9, y + h - 6, 6, 6);
 }
 
-function drawMall(x, y, w, h, body, dark) {
-    drawBrickBuilding(x, y, w, h, body, dark);
+function drawMall(c, x, y, w, h, body, dark) {
+    drawBrickBuilding(c, x, y, w, h, body, dark);
     // rooftop sign
-    ctx.fillStyle = '#ffd23f';
-    ctx.fillRect(x + Math.floor(w / 2) - 5, y - 3, 10, 3);
+    c.fillStyle = '#ffd23f';
+    c.fillRect(x + Math.floor(w / 2) - 5, y - 3, 10, 3);
     // entrance awning
-    ctx.fillStyle = dark;
-    ctx.fillRect(x + Math.floor(w / 2) - 4, y + h - 5, 8, 5);
+    c.fillStyle = dark;
+    c.fillRect(x + Math.floor(w / 2) - 4, y + h - 5, 8, 5);
 }
 
-function drawDome(x, y, w, h, body, dark) {
+function drawDome(c, x, y, w, h, body, dark) {
     const baseH = Math.ceil(h * 0.45);
     const domeH = h - baseH;
-    ctx.fillStyle = body;
-    ctx.fillRect(x, y + domeH, w, baseH);
+    c.fillStyle = body;
+    c.fillRect(x, y + domeH, w, baseH);
     for (let yy = 1; yy <= domeH; yy++) {
         const rowW = Math.max(2, Math.round(w * Math.pow(yy / domeH, 2)));
-        ctx.fillRect(x + Math.floor((w - rowW) / 2), y + yy - 1, rowW, 1);
+        c.fillRect(x + Math.floor((w - rowW) / 2), y + yy - 1, rowW, 1);
     }
     // panel stripes on the dome
-    ctx.fillStyle = dark;
+    c.fillStyle = dark;
     for (let sx = x + 3; sx < x + w - 2; sx += 6) {
-        ctx.fillRect(sx, y + 1, 1, domeH - 1);
+        c.fillRect(sx, y + 1, 1, domeH - 1);
     }
 }
 
-function drawTower(x, y, w, h, body, dark) {
-    drawBrickBuilding(x, y, w, h, body, dark);
-    // antenna mast
-    ctx.fillStyle = '#999';
-    ctx.fillRect(x + Math.floor(w / 2) - 1, y - 7, 2, 7);
-    // blinking beacon
-    if (frame % 10 < 5) {
-        ctx.fillStyle = '#ff5c5c';
-        ctx.fillRect(x + Math.floor(w / 2) - 2, y - 9, 4, 2);
-    }
+function drawTower(c, x, y, w, h, body, dark) {
+    drawBrickBuilding(c, x, y, w, h, body, dark);
+    // antenna mast (beacon is drawn separately per frame, see drawTowerBeacons)
+    c.fillStyle = '#999';
+    c.fillRect(x + Math.floor(w / 2) - 1, y - 7, 2, 7);
 }
 
-function drawBuilding(kind, x, y, w, h, body, dark) {
-    if (kind === 'warehouse') return drawWarehouse(x, y, w, h, body, dark);
-    if (kind === 'mall') return drawMall(x, y, w, h, body, dark);
-    if (kind === 'dome') return drawDome(x, y, w, h, body, dark);
-    if (kind === 'tower') return drawTower(x, y, w, h, body, dark);
-    drawBrickBuilding(x, y, w, h, body, dark);
+function drawBuilding(c, kind, x, y, w, h, body, dark) {
+    if (kind === 'warehouse') return drawWarehouse(c, x, y, w, h, body, dark);
+    if (kind === 'mall') return drawMall(c, x, y, w, h, body, dark);
+    if (kind === 'dome') return drawDome(c, x, y, w, h, body, dark);
+    if (kind === 'tower') return drawTower(c, x, y, w, h, body, dark);
+    drawBrickBuilding(c, x, y, w, h, body, dark);
 }
 
 function drawPlane(x, y, gold) {
@@ -791,6 +837,20 @@ function drawEffects() {
     }
 }
 
+function drawTowerBeacons() {
+    if (frame % 10 >= 5) return;
+    const layers = getBuildingLayers();
+    beaconList.forEach(({ li, b, s, baseY }) => {
+        const span = layers[li].width;
+        const sx = ((b.x - scrollX * LAYERS[li].speed) % span + span) % span;
+        [sx - span, sx, sx + span].forEach(x => {
+            if (x + s.w <= 0 || x >= PIXEL_W) return;
+            ctx.fillStyle = '#ff5c5c';
+            ctx.fillRect(x + Math.floor(s.w / 2) - 2, baseY - s.h + b.yj - 9, 4, 2);
+        });
+    });
+}
+
 function drawScene() {
     // sky
     ctx.fillStyle = '#9ad0ff';
@@ -823,26 +883,24 @@ function drawScene() {
         ctx.fillRect(gx, GROUND_Y + 5, 2, 4);
     }
 
-    // player's buildings, layered back-to-front for natural depth
+    // player's buildings, layered back-to-front for natural depth.
+    // Each layer is pre-rendered into fixed-width tiles, so drawing a city
+    // with thousands of buildings costs a handful of drawImage blits instead
+    // of one fillRect-heavy pass per building per frame.
+    ensureTiles();
     const buildingLayers = getBuildingLayers();
     for (let li = LAYERS.length - 1; li >= 0; li--) {
-        const layer = LAYERS[li];
-        const layerData = buildingLayers[li];
-        const baseY = GROUND_Y - layer.groundOffset;
-        layerData.list.forEach(b => {
-            const s = BUILDING_STYLES[b.tier];
-            const span = layerData.width;
-            const sx = ((b.x - scrollX * layer.speed) % span + span) % span;
-            // Draw wrap copies on both sides so buildings loop seamlessly
-            // at the screen edges instead of vanishing mid-screen.
-            [sx - span, sx, sx + span].forEach(x => {
-                if (x + s.w <= 0 || x >= PIXEL_W) return;
-                ctx.fillStyle = 'rgba(20, 50, 20, 0.25)';
-                ctx.fillRect(x + 1, baseY, s.w - 2, 2);
-                drawBuilding(s.kind, x, baseY - s.h + b.yj, s.w, s.h, s.body, s.dark);
+        const span = buildingLayers[li].width;
+        const sx0 = ((-(scrollX * LAYERS[li].speed)) % span + span) % span;
+        layerTiles[li].forEach(tile => {
+            [sx0 - span, sx0, sx0 + span].forEach(off => {
+                const x = off + tile.x;
+                if (x + tile.canvas.width <= 0 || x >= PIXEL_W) return;
+                ctx.drawImage(tile.canvas, Math.round(x), 0);
             });
         });
     }
+    drawTowerBeacons();
 
     // foreground grass strip (fast parallax, closest layer)
     ctx.fillStyle = '#2c6e34';
