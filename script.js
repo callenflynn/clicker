@@ -69,7 +69,6 @@ let state = {
     totalEarned: 0,
     achievements: [],
     balloonsCaught: 0,
-    prestige: 0,
     rebirths: 0,
     bestCombo: 0,
     frenziesTriggered: 0,
@@ -79,8 +78,6 @@ let state = {
 
 // Building milestones: doubling that building type's income at these ownership counts
 const MILESTONES = [25, 50, 100, 200];
-// Prestige: reset your run for permanent +10% income per point
-const PRESTIGE_DIVISOR = 1e6;
 // Rebirth: clean the planet for a permanent +25% income each time, but the
 // Earth pollution required for the next rebirth keeps growing.
 const REBIRTH_BASE = 300;
@@ -143,8 +140,6 @@ const shopPanel = document.getElementById('shopPanel');
 const shopBackdrop = document.getElementById('shopBackdrop');
 const shopToggle = document.getElementById('shopToggle');
 const shopClose = document.getElementById('shopClose');
-const prestigeInfoEl = document.getElementById('prestigeInfo');
-const prestigeBtn = document.getElementById('prestigeBtn');
 const rebirthInfoEl = document.getElementById('rebirthInfo');
 const rebirthBtn = document.getElementById('rebirthBtn');
 const pmPuffsEl = document.getElementById('pmPuffs');
@@ -290,13 +285,7 @@ function incomePerSec() {
     return base * incomeMult() * boostMult() * (1 - pollutionPenalty());
 }
 function incomeMult() {
-    return (1 + 0.05 * state.achievements.length) * (1 + 0.10 * state.prestige) * (1 + 0.25 * state.rebirths);
-}
-function prestigePointsForEarned(x) {
-    return Math.floor(Math.sqrt(x / PRESTIGE_DIVISOR));
-}
-function pendingPrestige() {
-    return Math.max(0, prestigePointsForEarned(state.totalEarned) - state.prestige);
+    return (1 + 0.05 * state.achievements.length) * (1 + 0.25 * state.rebirths);
 }
 function comboMult() {
     return 1 + combo * 0.1;
@@ -378,7 +367,7 @@ function syncPlacements() {
     }
     if (!changed) return;
 
-    // Decreases (prestige/reset/import) rebuild from scratch.
+    // Decreases (reset/import) rebuild from scratch.
     const anyDecrease = buildings.some((b, tier) => state.buildings[tier] < placementCounts[tier]);
     if (anyDecrease) { buildPlacementsFromScratch(); return; }
 
@@ -547,22 +536,6 @@ document.addEventListener('keydown', (e) => {
     clickPlane();
     e.stopImmediatePropagation();
 }, true);
-
-// ---- prestige ----
-function doPrestige() {
-    const gain = pendingPrestige();
-    if (gain <= 0) return;
-    if (!confirm('Prestige for +' + gain + ' prestige point' + (gain > 1 ? 's' : '') + '?\n\nEach point gives a permanent +10% income.\nMoney, buildings, and click power reset; achievements and lifetime stats are kept.')) return;
-    state.prestige += gain;
-    state.money = 0;
-    state.clickPower = 1;
-    state.clickLevel = 0;
-    state.buildings = buildings.map(() => 0);
-    invalidateLayers();
-    save();
-    update();
-    showToast('⭐ Prestige! +' + gain + ' point' + (gain > 1 ? 's' : '') + ' (+' + (gain * 10) + '% income)');
-}
 
 // ---- rebirth ----
 function doRebirth() {
@@ -780,9 +753,6 @@ function update() {
         sub.textContent = text;
     });
 
-    const pPending = pendingPrestige();
-    prestigeInfoEl.textContent = state.prestige + ' point' + (state.prestige === 1 ? '' : 's') + ' · +' + (state.prestige * 10) + '% income' + (pPending > 0 ? ' — ' + pPending + ' ready to claim!' : '');
-    prestigeBtn.disabled = pPending <= 0;
 
     const rNeed = rebirthRequirement();
     const rp = rebirthProgress();
@@ -796,7 +766,7 @@ function updateMeta() {
     const owned = state.buildings.reduce((a, b) => a + b, 0);
     // Only re-render stats/achievements when something actually changed;
     // update() runs 10×/sec so rebuilding this HTML every tick is wasteful.
-    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.prestige, state.rebirths, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution(), earthPollution(), currentMap].join(',');
+    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.rebirths, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution(), earthPollution(), currentMap].join(',');
     if (sig === metaSig) return;
     metaSig = sig;
 
@@ -806,7 +776,6 @@ function updateMeta() {
         '<div><span class="stat-label">Earned:</span> $' + fmt(state.totalEarned) + '</div>' +
         '<div><span class="stat-label">Buildings:</span> ' + owned + '</div>' +
         '<div><span class="stat-label">Best combo:</span> ×' + state.bestCombo + '</div>' +
-        '<div><span class="stat-label">Prestige:</span> ' + state.prestige + ' (+' + (state.prestige * 10) + '%)</div>' +
         '<div><span class="stat-label">Rebirths:</span> ' + state.rebirths + ' (+' + (state.rebirths * 25) + '%)</div>' +
         '<div><span class="stat-label">Frenzies:</span> ' + state.frenziesTriggered + '</div>' +
         '<div><span class="stat-label">Boosts:</span> ' + state.boostsCaught + '</div>' +
@@ -817,8 +786,8 @@ function updateMeta() {
     // toward the current rebirth requirement.
     const ep = earthPollution();
     pollutionMeterEl.classList.toggle('visible', currentMap === 'earth');
-    pmValueEl.textContent = ep;
-    pmFillEl.style.height = Math.round(rebirthProgress() * 100) + '%';
+    pmValueEl.textContent = ep + ' / ' + rebirthRequirement();
+    pmFillEl.style.height = Math.round(Math.min(earthPollution() / 300, 1) * 100) + '%';
     pmPuffsEl.style.opacity = Math.min(ep / 60, 1).toFixed(2);
 
     achievementsEl.innerHTML =
@@ -1604,11 +1573,10 @@ canvas.addEventListener('click', (e) => {
     }
 });
 
-// ---- shop + reset + prestige + save settings ----
+// ---- shop + reset + save settings ----
 shopToggle.onclick = openShop;
 shopClose.onclick = closeShop;
 shopBackdrop.onclick = closeShop;
-prestigeBtn.onclick = doPrestige;
 rebirthBtn.onclick = doRebirth;
 document.getElementById('exportBtn').onclick = exportSave;
 document.getElementById('importBtn').onclick = importSave;
@@ -1629,7 +1597,7 @@ document.addEventListener('keydown', (e) => {
 
 document.getElementById('resetBtn').onclick = () => {
     if (!confirm('Reset all progress? This cannot be undone.')) return;
-    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, prestige: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
+    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
     combo = 0;
     comboEndsAt = 0;
     frenzy.active = false;
@@ -1656,7 +1624,6 @@ function loadFrom(data) {
     state.totalEarned = data.totalEarned ?? 0;
     state.achievements = Array.isArray(data.achievements) ? data.achievements : [];
     state.balloonsCaught = data.balloonsCaught ?? 0;
-    state.prestige = data.prestige ?? 0;
     state.rebirths = data.rebirths ?? 0;
     state.bestCombo = data.bestCombo ?? 0;
     state.frenziesTriggered = data.frenziesTriggered ?? 0;

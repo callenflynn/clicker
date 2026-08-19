@@ -206,16 +206,6 @@ canvas {
     letter-spacing: 0.05em;
     color: #92610c;
 }
-#prestigeInfo { color: #7a5a1e; margin-bottom: 8px; line-height: 1.5; }
-#prestigeBtn {
-    width: 100%;
-    background: #b45309;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-weight: bold;
-}
-#prestigeBtn:hover:not(:disabled) { background: #92400e; }
 #rebirthInfo { color: #7a5a1e; margin-bottom: 8px; line-height: 1.5; }
 #rebirthBtn {
     width: 100%;
