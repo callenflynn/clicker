@@ -78,9 +78,8 @@ let state = {
 
 // Building milestones: doubling that building type's income at these ownership counts
 const MILESTONES = [25, 50, 100, 200];
-// Rebirth: clean the planet for a permanent +25% income each time, but the
-// Earth pollution required for the next rebirth keeps growing.
-const REBIRTH_BASE = 300;
+// Rebirth: reset for a permanent +25% income bonus. Cost scales up each time.
+const REBIRTH_BASE = 1e7;
 // Click combo: clicking within the window builds a temporary click multiplier
 const COMBO_WINDOW = 2500;
 const COMBO_CAP = 30;
@@ -128,9 +127,7 @@ const ACHIEVEMENTS = [
 
 const moneyEl = document.getElementById('money');
 const incomeEl = document.getElementById('income');
-const pollutionMeterEl = document.getElementById('pollutionMeter');
-const pmValueEl = document.getElementById('pmValue');
-const pmFillEl = document.getElementById('pmFill');
+
 const shopItemsEl = document.getElementById('shopItems');
 const buyModesEl = document.getElementById('buyModes');
 const statsEl = document.getElementById('stats');
@@ -142,7 +139,6 @@ const shopToggle = document.getElementById('shopToggle');
 const shopClose = document.getElementById('shopClose');
 const rebirthInfoEl = document.getElementById('rebirthInfo');
 const rebirthBtn = document.getElementById('rebirthBtn');
-const pmPuffsEl = document.getElementById('pmPuffs');
 const canvas = document.getElementById('scene');
 const ctx = canvas.getContext('2d');
 const clickSoundEl = document.getElementById('clickSound');
@@ -312,10 +308,10 @@ function earthPollutionLevel() {
 }
 function rebirthRequirement(n) {
     const r = n === undefined ? state.rebirths : n;
-    return REBIRTH_BASE * Math.pow(2, r);
+    return REBIRTH_BASE * Math.pow(10, r);
 }
 function rebirthProgress() {
-    return Math.min(earthPollution() / rebirthRequirement(), 1);
+    return Math.min(state.money / rebirthRequirement(), 1);
 }
 function smoothPollutionLevel() {
     return easedPollution;
@@ -540,8 +536,8 @@ document.addEventListener('keydown', (e) => {
 // ---- rebirth ----
 function doRebirth() {
     const need = rebirthRequirement();
-    if (earthPollution() < need) return;
-    if (!confirm('Rebirth for +25% permanent income?\n\nThis cleans Earth\'s smog but resets money, buildings, and click power. Your next rebirth needs ' + rebirthRequirement(state.rebirths + 1) + ' Earth pollution.')) return;
+    if (state.money < need) return;
+    if (!confirm('Rebirth for +25% permanent income?\n\nThis resets money, buildings, and click power. Your next rebirth costs $' + fmt(rebirthRequirement(state.rebirths + 1)) + '.')) return;
     state.rebirths++;
     state.money = 0;
     state.clickPower = 1;
@@ -756,7 +752,7 @@ function update() {
 
     const rNeed = rebirthRequirement();
     const rp = rebirthProgress();
-    rebirthInfoEl.textContent = state.rebirths + ' rebirth' + (state.rebirths === 1 ? '' : 's') + ' · +' + (state.rebirths * 25) + '% income' + (rp >= 1 ? ' — ready to rebirth!' : ' — needs ' + rNeed + ' Earth pollution');
+    rebirthInfoEl.textContent = state.rebirths + ' rebirth' + (state.rebirths === 1 ? '' : 's') + ' · +' + (state.rebirths * 25) + '% income' + (rp >= 1 ? ' — ready!' : ' — $' + fmt(rNeed) + ' needed');
     rebirthBtn.disabled = rp < 1;
 
     updateMeta();
@@ -782,13 +778,6 @@ function updateMeta() {
         '<div><span class="stat-label">Income bonus:</span> +' + Math.round((incomeMult() - 1) * 100) + '%</div>' +
         '<div><span class="stat-label">Pollution:</span> ' + pollution() + (pollution() > 0 ? ' (-' + Math.round(pollutionPenalty() * 100) + '% income)' : '') + '</div>';
 
-    // Earth pollution meter (visible only on Earth) — a smokestack that fills
-    // toward the current rebirth requirement.
-    const ep = earthPollution();
-    pollutionMeterEl.classList.toggle('visible', currentMap === 'earth');
-    pmValueEl.textContent = ep + ' / ' + rebirthRequirement();
-    pmFillEl.style.height = Math.round(Math.min(earthPollution() / 300, 1) * 100) + '%';
-    pmPuffsEl.style.opacity = Math.min(ep / 60, 1).toFixed(2);
 
     achievementsEl.innerHTML =
         '<h3>Achievements (' + state.achievements.length + '/' + ACHIEVEMENTS.length + ')</h3>' +
