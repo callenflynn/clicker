@@ -298,17 +298,21 @@ function pollution() {
 function pollutionPenalty() {
     return Math.min(pollution() * 0.005, 0.5);
 }
-// Factories pollute Earth specifically; this drives the yellowing grass,
-// graying sky, extra smog clouds, and the Earth pollution meter.
+// Earth pollution is driven by total building count on Earth.
+// More buildings = more smog, yellowing grass, gray skies.
 function earthPollution() {
-    return Math.max(0, buildings.reduce((sum, b, i) => sum + (buildingMap(i) === 'earth' ? ((b.pollution || 0) - (b.pollutionReduction || 0)) * state.buildings[i] : 0), 0));
+    const total = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === 'earth' ? state.buildings[i] : 0), 0);
+    if (total <= 0) return 0;
+    return Math.min(1, Math.log10(total + 1) / 4);
 }
 function earthPollutionLevel() {
-    return Math.min(earthPollution() / 20, 1);
+    return earthPollution();
 }
 function rebirthRequirement(n) {
     const r = n === undefined ? state.rebirths : n;
-    return REBIRTH_BASE * Math.pow(10, r);
+    // First 10: 10x per rebirth. After that: gentle 3% increase per rebirth.
+    if (r <= 10) return REBIRTH_BASE * Math.pow(10, r);
+    return REBIRTH_BASE * 1e10 * Math.pow(1.03, r - 10);
 }
 function rebirthProgress() {
     return Math.min(state.money / rebirthRequirement(), 1);
@@ -327,12 +331,18 @@ function mixColor(a, b, t) {
     return 'rgb(' + r + ',' + g + ',' + bl + ')';
 }
 function fmt(n) {
+    if (!isFinite(n)) return '\u221E';
     if (n < 1000) return Math.floor(n).toString();
-    const units = ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+    const prefixes = ['', 'U', 'D', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No'];
+    const baseUnits = ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No'];
+    const groupNames = ['Dc', 'Vg', 'Tg', 'Qd', 'QiD', 'Sxg', 'Spg', 'Ocg', 'Nog', 'Cn'];
+    const units = [...baseUnits];
+    for (const g of groupNames) {
+        for (const p of prefixes) units.push(p + g);
+    }
     let i = -1;
     while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
-    if (i >= units.length - 1) return n.toExponential(2).replace('+', '');
-    return n.toFixed(2).replace(/\.?0+$/, '') + units[i];
+    return n.toFixed(2).replace(/\.?0+$/, '') + units[Math.max(0, i)];
 }
 const TILE_W = 1024;
 let cachedLayers = null;
