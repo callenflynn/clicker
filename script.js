@@ -1174,7 +1174,6 @@ function drawBirds() {
 }
 
 function drawTrees(count) {
-    drawEarthPollution();
     const ep = currentMap === 'earth' ? smoothPollutionLevel() : 0;
     for (let i = 0; i < count; i++) {
         const tx = Math.round(((i * 41 + 17 - scrollX * 1.6) % PIXEL_W + PIXEL_W) % PIXEL_W);
@@ -1188,28 +1187,63 @@ function drawTrees(count) {
 }
 
 function drawEarthPollution() {
-    // Ease toward the real level so the grass and sky yellow/gray gradually.
     const target = currentMap === 'earth' ? earthPollutionLevel() : 0;
     easedPollution += (target - easedPollution) * 0.04;
     const ep = Math.max(0, Math.min(1, easedPollution));
     if (ep < 0.01) return;
 
-    // Gray out the sky as factories pollute.
-    ctx.fillStyle = 'rgba(92, 96, 102, ' + (ep * 0.5).toFixed(3) + ')';
+    // --- LAYER 1: Sky gradient — darker brownish-gray near horizon ---
+    const skyTop = mixColor('#9ad0ff', '#6e6558', ep * 0.7);
+    const skyBot = mixColor('#b8d8f8', '#7a6e5a', ep * 0.85);
+    const grad = ctx.createLinearGradient(0, 0, 0, SKYLINE_Y);
+    grad.addColorStop(0, skyTop);
+    grad.addColorStop(1, skyBot);
+    ctx.fillStyle = grad;
     ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
 
-    // Extra dark smog clouds drift across the sky.
-    const cloudCount = Math.round(ep * 6);
-    for (let i = 0; i < cloudCount; i++) {
-        const cx = ((i * 61 + 7 - scrollX * 0.55) % (PIXEL_W + 80) + (PIXEL_W + 80)) % (PIXEL_W + 80) - 40;
-        const cy = 12 + ((i * 31) % 30);
-        ctx.fillStyle = 'rgba(118, 122, 128, ' + (0.35 + ep * 0.35).toFixed(3) + ')';
-        ctx.fillRect(cx, cy, 18 + (i % 3) * 6, 4);
-        ctx.fillRect(cx + 3, cy - 2, 12 + (i % 3) * 4, 2);
+    // --- LAYER 2: Dimming sun ---
+    if (ep > 0.05) {
+        const sunX = 50, sunY = 18;
+        const sunAlpha = Math.max(0.08, 0.5 - ep * 0.45);
+        const sunColor = mixColor('#ffe87a', '#d4943a', ep);
+        ctx.fillStyle = sunColor;
+        ctx.globalAlpha = sunAlpha;
+        const r = Math.round(6 - ep * 2);
+        for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+                if (dx * dx + dy * dy <= r * r) ctx.fillRect(sunX + dx, sunY + dy, 1, 1);
+            }
+        }
+        ctx.globalAlpha = 1;
     }
 
-    // Yellow the grass: the open ground below the buildings gets a light
-    // coat, and the foreground strip (already drawn) gets an extra coat.
+    // --- LAYER 3: Far smog clouds (small, high, slow drift) ---
+    const farCount = Math.round(ep * 4);
+    for (let i = 0; i < farCount; i++) {
+        const cx = ((i * 73 + 12 - scrollX * 0.25) % (PIXEL_W + 100) + (PIXEL_W + 100)) % (PIXEL_W + 100) - 50;
+        const cy = 8 + ((i * 37) % 20);
+        ctx.fillStyle = 'rgba(140, 132, 115, ' + (0.2 + ep * 0.3).toFixed(3) + ')';
+        ctx.fillRect(cx, cy, 20 + (i % 2) * 8, 3);
+        ctx.fillRect(cx + 4, cy - 1, 14 + (i % 2) * 5, 2);
+    }
+
+    // --- LAYER 4: Near smog clouds (bigger, lower, faster drift) ---
+    const nearCount = Math.round(ep * 5);
+    for (let i = 0; i < nearCount; i++) {
+        const cx = ((i * 59 + 3 - scrollX * 0.6) % (PIXEL_W + 120) + (PIXEL_W + 120)) % (PIXEL_W + 120) - 60;
+        const cy = 20 + ((i * 43) % 28);
+        ctx.fillStyle = 'rgba(120, 112, 96, ' + (0.3 + ep * 0.45).toFixed(3) + ')';
+        ctx.fillRect(cx, cy, 28 + (i % 3) * 8, 5);
+        ctx.fillRect(cx + 3, cy - 2, 20 + (i % 3) * 6, 3);
+    }
+
+    // --- LAYER 5: Thick ground-hugging smog ---
+    ctx.fillStyle = 'rgba(105, 95, 80, ' + (ep * 0.55).toFixed(3) + ')';
+    ctx.fillRect(0, SKYLINE_Y - 10, PIXEL_W, PIXEL_H - SKYLINE_Y + 10);
+    ctx.fillStyle = 'rgba(90, 82, 70, ' + (ep * 0.4).toFixed(3) + ')';
+    ctx.fillRect(0, SKYLINE_Y - 16, PIXEL_W, 8);
+
+    // --- LAYER 6: Yellow the grass ---
     ctx.fillStyle = 'rgba(165, 148, 58, ' + (ep * 0.45).toFixed(3) + ')';
     ctx.fillRect(0, GROUND_Y, PIXEL_W, PIXEL_H - GROUND_Y);
     ctx.fillStyle = 'rgba(165, 148, 58, ' + (ep * 0.85).toFixed(3) + ')';
@@ -1368,23 +1402,13 @@ function drawTowerBeacons() {
     });
 }
 
-function drawSmog() {
-    const p = pollution();
-    if (p <= 0 || currentMap !== 'earth') return;
-    const alpha = Math.min(p * 0.0065, 0.65);
-    // brownish haze drifting across the sky itself
-    ctx.fillStyle = 'rgba(150, 132, 104, ' + (alpha * 0.45).toFixed(3) + ')';
-    ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
-    // thick smog hugging the city
-    ctx.fillStyle = 'rgba(105, 95, 80, ' + alpha.toFixed(3) + ')';
-    ctx.fillRect(0, SKYLINE_Y - 8, PIXEL_W, PIXEL_H - SKYLINE_Y + 8);
-    ctx.fillStyle = 'rgba(90, 82, 70, ' + (alpha * 0.7).toFixed(3) + ')';
-    ctx.fillRect(0, SKYLINE_Y - 14, PIXEL_W, 8);
-}
-
 function drawScene() {
-    // sky
-    ctx.fillStyle = currentMap === 'mars' ? '#c98a5b' : '#9ad0ff';
+    // sky — shifts from blue to dirty brown-gray with pollution
+    if (currentMap === 'mars') {
+        ctx.fillStyle = '#c98a5b';
+    } else {
+        ctx.fillStyle = mixColor('#9ad0ff', '#7a7262', Math.min(1, easedPollution * 0.6));
+    }
     ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
 
     // background city + haze (behind everything else)
@@ -1434,7 +1458,7 @@ function drawScene() {
         });
     }
     drawTowerBeacons();
-    drawSmog();
+    drawEarthPollution();
 
     // foreground strip (grass on Earth, dust on Mars)
     if (currentMap === 'mars') {
