@@ -257,8 +257,12 @@ function nextMilestone(i) {
     for (const m of MILESTONES) if (owned < m) return m;
     return null;
 }
+// Each building tier belongs to Earth (city tiers) or Mars (space tiers).
+function buildingMap(i) {
+    return i >= 10 ? 'mars' : 'earth';
+}
 function incomePerSec() {
-    const base = buildings.reduce((sum, b, i) => sum + b.income * state.buildings[i] * buildingMult(i), 0);
+    const base = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0);
     return base * incomeMult() * boostMult() * (1 - pollutionPenalty());
 }
 function incomeMult() {
@@ -314,6 +318,7 @@ function buildBuildingLayers() {
     const layers = LAYERS.map(() => ({ list: [], width: PIXEL_W }));
     const cursors = LAYERS.map(() => 0);
     buildings.forEach((b, tier) => {
+        if (buildingMap(tier) !== currentMap) return;
         const s = BUILDING_STYLES[tier];
         const layer = s.layer;
         for (let i = 0; i < state.buildings[tier]; i++) {
@@ -471,8 +476,9 @@ function importSave() {
     }
 }
 
-// ---- shop UI (built once) ----
+// ---- shop UI (rebuilt when the map changes) ----
 function createShop() {
+    shopItemsEl.innerHTML = '';
     const cpDiv = document.createElement('div');
     cpDiv.className = 'item';
     cpBtn = document.createElement('button');
@@ -481,6 +487,7 @@ function createShop() {
     shopItemsEl.appendChild(cpDiv);
 
     buildingBtns = buildings.map((b, i) => {
+        if (buildingMap(i) !== currentMap) return null;
         const div = document.createElement('div');
         div.className = 'item';
         const btn = document.createElement('button');
@@ -550,11 +557,16 @@ mapBtn.onclick = () => {
     if (marsUnlocked()) {
         currentMap = currentMap === 'mars' ? 'earth' : 'mars';
         showToast(currentMap === 'mars' ? '🔴 Switched to Mars' : '🌍 Switched to Earth');
+        invalidateLayers();
+        createShop();
+        update();
     } else if (state.money >= MARS_COST) {
         state.money -= MARS_COST;
         localStorage.setItem(MARS_KEY, '1');
         currentMap = 'mars';
         showToast('🔴 Mars unlocked!');
+        invalidateLayers();
+        createShop();
         update();
     } else {
         showToast('Need $' + fmt(MARS_COST) + ' to unlock Mars');
@@ -594,6 +606,7 @@ function update() {
     cpBtn.disabled = cpInfo.n === 0;
 
     buildings.forEach((b, i) => {
+        if (!buildingBtns[i]) return;
         const { n, cost } = buildingBuyInfo(i);
         buildingBtns[i].textContent = b.name + ' (' + state.buildings[i] + ') - $' + fmt(cost) + (n > 1 ? ' (×' + n + ')' : '');
         buildingBtns[i].disabled = n === 0;
@@ -897,29 +910,29 @@ function drawPlane(x, y, gold) {
 function drawMarsRocket(x, y, gold) {
     const body = gold ? '#ffe08a' : '#e8e8f0';
     const fin = gold ? '#e8a23a' : '#d33';
-    // nose cone
+    // nose cone (points left, direction of travel)
     ctx.fillStyle = fin;
-    ctx.fillRect(x + 8, y - 2, 3, 3);
-    ctx.fillRect(x + 9, y - 3, 1, 1);
+    ctx.fillRect(x + 3, y + 5, 3, 3);
+    ctx.fillRect(x + 2, y + 6, 1, 1);
     // fuselage
     ctx.fillStyle = body;
-    ctx.fillRect(x + 8, y + 1, 3, 9);
-    // fins
-    ctx.fillStyle = fin;
-    ctx.fillRect(x + 6, y + 7, 2, 3);
-    ctx.fillRect(x + 11, y + 7, 2, 3);
+    ctx.fillRect(x + 6, y + 5, 9, 3);
     // window
     ctx.fillStyle = '#7cd8ff';
-    ctx.fillRect(x + 9, y + 3, 1, 2);
+    ctx.fillRect(x + 8, y + 6, 2, 1);
     // stripe
     ctx.fillStyle = fin;
-    ctx.fillRect(x + 8, y + 4, 3, 1);
-    // flame
+    ctx.fillRect(x + 11, y + 6, 2, 1);
+    // rear fins
+    ctx.fillStyle = fin;
+    ctx.fillRect(x + 14, y + 3, 2, 2);
+    ctx.fillRect(x + 14, y + 8, 2, 2);
+    // flame (exhaust out the back, animated)
     ctx.fillStyle = '#ff9f1c';
     if (frame % 6 < 3) {
-        ctx.fillRect(x + 9, y + 10, 1, 4);
+        ctx.fillRect(x + 16, y + 5, 3, 3);
     } else {
-        ctx.fillRect(x + 9, y + 10, 1, 2);
+        ctx.fillRect(x + 16, y + 6, 2, 1);
     }
     if (gold) {
         ctx.fillStyle = 'rgba(255,210,63,0.55)';
