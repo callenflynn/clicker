@@ -49,7 +49,14 @@ const BUILDING_STYLES = [
     { w: 30, h: 24, body: '#4f9d69', dark: '#285a3a', layer: 1, kind: 'recycler' }, // Recycling Plant
     { w: 36, h: 32, body: '#5b8fa8', dark: '#2f5668', layer: 2, kind: 'hydro' }, // Hydro Dam
     { w: 34, h: 30, body: '#6bbf78', dark: '#31734a', layer: 1, kind: 'terraform' }, // Terraforming Lab
-    { w: 34, h: 38, body: '#b88cff', dark: '#5f3e9c', layer: 2, kind: 'quantum' } // Quantum Relay
+    { w: 34, h: 38, body: '#b88cff', dark: '#5f3e9c', layer: 2, kind: 'quantum' }, // Quantum Relay
+    // Nuclear buildings
+    { w: 24, h: 36, body: '#8a8a8a', dark: '#5a5a5a', layer: 2, kind: 'reactor' },  // Reactor Core
+    { w: 20, h: 40, body: '#a0a0a0', dark: '#707070', layer: 2, kind: 'cooling' },   // Cooling Tower
+    { w: 26, h: 22, body: '#6a7a3a', dark: '#4a5a2a', layer: 1, kind: 'waste' },    // Waste Facility
+    { w: 22, h: 28, body: '#4a7a8a', dark: '#2a5a6a', layer: 1, kind: 'lab' },      // Research Lab
+    { w: 28, h: 30, body: '#7a7a6a', dark: '#5a5a4a', layer: 2, kind: 'contain' },  // Containment Pod
+    { w: 30, h: 34, body: '#3a8a5a', dark: '#1a6a3a', layer: 2, kind: 'fusion' }    // Fusion Engine
 ];
 
 // Depth bands drawn back-to-front. Taller buildings live further back,
@@ -122,7 +129,10 @@ const ACHIEVEMENTS = [
     { id: 'recycler_1', name: 'Clean Machine', desc: 'Own a Recycling Plant', check: s => s.buildings[17] >= 1 },
     { id: 'hydro_1', name: 'Water Works', desc: 'Own a Hydro Dam', check: s => s.buildings[18] >= 1 },
     { id: 'terraform_1', name: 'Green Mars', desc: 'Own a Terraforming Lab', check: s => s.buildings[19] >= 1 },
-    { id: 'quantum_1', name: 'Quantum Leap', desc: 'Own a Quantum Relay', check: s => s.buildings[20] >= 1 }
+    { id: 'quantum_1', name: 'Quantum Leap', desc: 'Own a Quantum Relay', check: s => s.buildings[20] >= 1 },
+    { id: 'reactor_1', name: 'Critical Mass', desc: 'Own a Reactor Core', check: s => s.buildings[21] >= 1 },
+    { id: 'reactor_10', name: 'Nuclear Winter', desc: 'Own 10 Reactor Cores', check: s => s.buildings[21] >= 10 },
+    { id: 'fusion_1', name: 'Fusion Master', desc: 'Own a Fusion Engine', check: s => s.buildings[26] >= 1 }
 ];
 
 const moneyEl = document.getElementById('money');
@@ -187,13 +197,14 @@ const SKYLINE_SPAN = 16 * 24;
 
 // ---- helpers ----
 function buildingCostAt(i, owned) {
-    return Math.floor(buildings[i].baseCost * Math.pow(buildings[i].costMult, owned));
+    const allBuildings = buildings.concat(nuclearBuildings);
+    return Math.floor(allBuildings[i].baseCost * Math.pow(allBuildings[i].costMult, owned));
 }
 function buildingCost(i) {
     return buildingCostAt(i, state.buildings[i]);
 }
 function bulkCost(i, n) {
-    const c = buildings[i];
+    const c = buildings.concat(nuclearBuildings)[i];
     return Math.floor(c.baseCost * Math.pow(c.costMult, state.buildings[i]) * (Math.pow(c.costMult, n) - 1) / (c.costMult - 1));
 }
 function maxAffordable(i) {
@@ -274,7 +285,9 @@ function nextMilestone(i) {
 }
 // Each building tier belongs to Earth (city tiers) or Mars (space tiers).
 function buildingMap(i) {
-    return buildings[i].map || (i >= 10 ? 'mars' : 'earth');
+    if (i < buildings.length) return buildings[i].map || (i >= 10 ? 'mars' : 'earth');
+    const ni = i - buildings.length;
+    return nuclearBuildings[ni] ? nuclearBuildings[ni].map : 'earth';
 }
 function incomePerSec() {
     const base = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0);
@@ -303,6 +316,12 @@ function earthPollution() {
 }
 function earthPollutionLevel() {
     return earthPollution();
+}
+// River pollution on nuclear map: based on nuclear building count
+function nuclearRiverPollution() {
+    const total = buildings.concat(nuclearBuildings).reduce((sum, b, i) => sum + (buildingMap(i) === 'nuclear' ? state.buildings[i] : 0), 0);
+    if (total <= 0) return 0;
+    return Math.min(1, Math.log10(total + 1) / 3);
 }
 // For backward compat: pollution() now returns earth pollution as a raw score
 function pollution() {
@@ -357,7 +376,7 @@ let metaSig = '';
 
 // Persistent building slots so buying one type never reflows (and visually
 // deletes) buildings of another type. These are synced lazily when counts change.
-let placementSlots = { earth: [[], [], []], mars: [[], [], []] };
+let placementSlots = { earth: [[], [], []], mars: [[], [], []], nuclear: [[], [], []] };
 let placementCounts = buildings.map(() => 0);
 
 function invalidateLayers() { layersDirty = true; tilesDirty = true; }
@@ -625,7 +644,8 @@ function createShop() {
     cpDiv.appendChild(cpBtn);
     shopItemsEl.appendChild(cpDiv);
 
-    buildingBtns = buildings.map((b, i) => {
+    const allBuildings = buildings.concat(nuclearBuildings);
+    buildingBtns = allBuildings.map((b, i) => {
         if (buildingMap(i) !== currentMap) return null;
         const div = document.createElement('div');
         div.className = 'item';
@@ -678,6 +698,8 @@ function closeShop() {
 
 // ---- map switching (Earth / Mars) ----
 const MARS_COST = 1e7;
+const NUCLEAR_COST = 1e21;
+const NUCLEAR_KEY = 'clih-nuclear-unlocked';
 const MARS_KEY = 'clih-mars-unlocked';
 let currentMap = 'earth';
 const mapBtn = document.getElementById('mapBtn');
@@ -685,21 +707,41 @@ const mapBtn = document.getElementById('mapBtn');
 function marsUnlocked() {
     return localStorage.getItem(MARS_KEY) === '1';
 }
+function nuclearUnlocked() {
+    return localStorage.getItem(NUCLEAR_KEY) === '1';
+}
+const nuclearBuildings = [
+    { name: 'Reactor Core',   baseCost: 1e22,  costMult: 1.15, income: 1e13, pollution: 3, map: 'nuclear' },
+    { name: 'Cooling Tower',   baseCost: 1e23,  costMult: 1.15, income: 5e13, pollution: 2, map: 'nuclear' },
+    { name: 'Waste Facility',  baseCost: 1e24,  costMult: 1.15, income: 2.5e14, pollution: 4, map: 'nuclear' },
+    { name: 'Research Lab',    baseCost: 1e25,  costMult: 1.15, income: 1e15, pollution: 1, map: 'nuclear' },
+    { name: 'Containment Pod', baseCost: 1e26,  costMult: 1.15, income: 5e15, pollutionReduction: 2, map: 'nuclear' },
+    { name: 'Fusion Engine',   baseCost: 1e27,  costMult: 1.15, income: 2.5e16, map: 'nuclear' }
+];
 function updateMapBtn() {
-    if (marsUnlocked()) {
-        mapBtn.textContent = currentMap === 'mars' ? '🌍 Earth' : '🔴 Mars';
+    const labels = { earth: '🌍 Earth', mars: '🔴 Mars', nuclear: '☢️ Nuclear' };
+    if (nuclearUnlocked() && marsUnlocked()) {
+        const next = { earth: 'mars', mars: 'nuclear', nuclear: 'earth' };
+        mapBtn.textContent = '→ ' + labels[next[currentMap]];
+    } else if (marsUnlocked()) {
+        mapBtn.textContent = nuclearUnlocked()
+            ? (currentMap === 'mars' ? '☢️ Nuclear' : '🔴 Mars')
+            : '☢️ Nuclear ($' + fmt(NUCLEAR_COST) + ')';
     } else {
         mapBtn.textContent = '🚀 Mars ($' + fmt(MARS_COST) + ')';
     }
 }
 mapBtn.onclick = () => {
-    if (marsUnlocked()) {
-        currentMap = currentMap === 'mars' ? 'earth' : 'mars';
-        showToast(currentMap === 'mars' ? '🔴 Switched to Mars' : '🌍 Switched to Earth');
+    const nextMap = { earth: 'mars', mars: nuclearUnlocked() ? 'nuclear' : 'earth', nuclear: 'earth' };
+    const target = nextMap[currentMap];
+    if ((target === 'earth') || (target === 'mars' && marsUnlocked()) || (target === 'nuclear' && nuclearUnlocked())) {
+        currentMap = target;
+        const labels = { earth: '🌍 Earth', mars: '🔴 Mars', nuclear: '☢️ Nuclear' };
+        showToast('Switched to ' + labels[target]);
         invalidateLayers();
         createShop();
         update();
-    } else if (state.money >= MARS_COST) {
+    } else if (target === 'mars' && state.money >= MARS_COST) {
         state.money -= MARS_COST;
         localStorage.setItem(MARS_KEY, '1');
         currentMap = 'mars';
@@ -707,8 +749,17 @@ mapBtn.onclick = () => {
         invalidateLayers();
         createShop();
         update();
+    } else if (target === 'nuclear' && state.money >= NUCLEAR_COST) {
+        state.money -= NUCLEAR_COST;
+        localStorage.setItem(NUCLEAR_KEY, '1');
+        currentMap = 'nuclear';
+        showToast('☢️ Nuclear map unlocked!');
+        invalidateLayers();
+        createShop();
+        update();
     } else {
-        showToast('Need $' + fmt(MARS_COST) + ' to unlock Mars');
+        const cost = target === 'mars' ? MARS_COST : NUCLEAR_COST;
+        showToast('Need $' + fmt(cost) + ' to unlock ' + (target === 'mars' ? 'Mars' : 'Nuclear'));
     }
     updateMapBtn();
 };
@@ -744,7 +795,7 @@ function update() {
     cpBtn.textContent = 'Click Power (lvl ' + state.clickLevel + ') - $' + fmt(cpInfo.cost) + (cpInfo.n > 1 ? ' (×' + cpInfo.n + ')' : '');
     cpBtn.disabled = cpInfo.n === 0;
 
-    buildings.forEach((b, i) => {
+    buildings.concat(nuclearBuildings).forEach((b, i) => {
         if (!buildingBtns[i]) return;
         const { n, cost } = buildingBuyInfo(i);
         buildingBtns[i].textContent = b.name + ' (' + state.buildings[i] + ') - $' + fmt(cost) + (n > 1 ? ' (×' + n + ')' : '');
@@ -1250,6 +1301,70 @@ function drawEarthPollution() {
     ctx.fillRect(0, PIXEL_H - 12, PIXEL_W, 12);
 }
 
+function drawNuclearReactor(x, y, gold) {
+    const body = gold ? '#ffe08a' : '#d0d0d8';
+    const dark = gold ? '#c8a030' : '#808090';
+    // base platform
+    ctx.fillStyle = '#606068';
+    ctx.fillRect(x - 2, y + planeH + 2, planeW + 4, 3);
+    // reactor dome
+    ctx.fillStyle = body;
+    ctx.fillRect(x + 2, y + 2, 14, 8);
+    ctx.fillRect(x + 4, y, 10, 2);
+    // control rod / core glow
+    ctx.fillStyle = '#44ff88';
+    ctx.fillRect(x + 7, y + 4, 4, 3);
+    // chimney stacks
+    ctx.fillStyle = dark;
+    ctx.fillRect(x + 1, y - 6, 3, 8);
+    ctx.fillRect(x + 15, y - 4, 3, 6);
+    // smoke puffs (animated)
+    ctx.fillStyle = 'rgba(180,180,180,0.5)';
+    if (frame % 20 < 10) {
+        ctx.fillRect(x, y - 10, 4, 3);
+        ctx.fillRect(x + 14, y - 8, 5, 3);
+    } else {
+        ctx.fillRect(x - 1, y - 12, 5, 3);
+        ctx.fillRect(x + 13, y - 10, 6, 3);
+    }
+    // radiation warning symbol
+    ctx.fillStyle = '#ffaa00';
+    ctx.fillRect(x + 8, y + 2, 2, 2);
+    if (gold) {
+        ctx.fillStyle = 'rgba(255,210,63,0.55)';
+        ctx.fillRect(x - 1, y - 1, planeW + 2, 1);
+        ctx.fillRect(x - 1, y + planeH, planeW + 2, 1);
+    }
+}
+
+function drawNuclearScene() {
+    const rp = nuclearRiverPollution();
+    const riverY = PIXEL_H - 20;
+    const riverH = 12;
+    // water base — shifts from blue to toxic green
+    ctx.fillStyle = mixColor('#3a7aaa', '#4a8a3a', rp);
+    ctx.fillRect(0, riverY, PIXEL_W, riverH);
+    // shimmer
+    ctx.fillStyle = mixColor('#5aa0cc', '#6aaa4a', rp);
+    for (let i = 0; i < 8; i++) {
+        const sx = ((i * 42 + 5 - scrollX * 0.3) % PIXEL_W + PIXEL_W) % PIXEL_W;
+        ctx.fillRect(sx, riverY + 3 + (i % 3) * 2, 10 + (i % 2) * 4, 1);
+    }
+    // toxic foam at high pollution
+    if (rp > 0.3) {
+        ctx.fillStyle = 'rgba(120, 180, 60, ' + ((rp - 0.3) * 0.5).toFixed(2) + ')';
+        for (let i = 0; i < 6; i++) {
+            const fx = ((i * 53 + 11 - scrollX * 0.4) % PIXEL_W + PIXEL_W) % PIXEL_W;
+            ctx.fillRect(fx, riverY + 2 + (i % 4) * 2, 6 + (i % 3) * 2, 2);
+        }
+    }
+    // river banks
+    ctx.fillStyle = '#4a5a3a';
+    ctx.fillRect(0, riverY - 2, PIXEL_W, 2);
+    ctx.fillStyle = '#3a4a2a';
+    ctx.fillRect(0, riverY + riverH, PIXEL_W, 2);
+}
+
 function drawClickHint() {
     const now = performance.now();
     if (now - lastPlaneClick < 5000) return;
@@ -1406,6 +1521,8 @@ function drawScene() {
     // sky — shifts from blue to dirty brown-gray with pollution
     if (currentMap === 'mars') {
         ctx.fillStyle = '#c98a5b';
+    } else if (currentMap === 'nuclear') {
+        ctx.fillStyle = mixColor('#7a8a7a', '#4a5a4a', Math.min(1, easedPollution * 0.8));
     } else {
         ctx.fillStyle = mixColor('#9ad0ff', '#7a7262', Math.min(1, easedPollution * 0.6));
     }
@@ -1414,8 +1531,8 @@ function drawScene() {
     // background city + haze (behind everything else)
     drawSkyline();
 
-    // clouds + birds (Earth only)
-    if (currentMap === 'earth') {
+    // clouds + birds
+    if (currentMap === 'earth' || currentMap === 'nuclear') {
         ctx.fillStyle = '#ffffff';
         clouds.forEach(c => {
             const span = PIXEL_W + 40;
@@ -1426,13 +1543,25 @@ function drawScene() {
     }
 
     // ground plane from the horizon down
-    ctx.fillStyle = currentMap === 'mars' ? '#a3442e' : '#3f9b3f';
+    if (currentMap === 'mars') {
+        ctx.fillStyle = '#a3442e';
+    } else if (currentMap === 'nuclear') {
+        ctx.fillStyle = '#5a6a5a';
+    } else {
+        ctx.fillStyle = '#3f9b3f';
+    }
     ctx.fillRect(0, SKYLINE_Y, PIXEL_W, PIXEL_H - SKYLINE_Y);
-    ctx.fillStyle = currentMap === 'mars' ? '#8c3a28' : '#358335';
+    if (currentMap === 'mars') {
+        ctx.fillStyle = '#8c3a28';
+    } else if (currentMap === 'nuclear') {
+        ctx.fillStyle = '#4a5a4a';
+    } else {
+        ctx.fillStyle = '#358335';
+    }
     ctx.fillRect(0, SKYLINE_Y, PIXEL_W, 2);
 
-    // scrolling grass tufts (Earth only)
-    if (currentMap === 'earth') {
+    // scrolling grass tufts
+    if (currentMap === 'earth' || currentMap === 'nuclear') {
         ctx.fillStyle = '#2f7a2f';
         for (let i = 0; i < 8; i++) {
             const gx = ((i * 45 - scrollX) % PIXEL_W + PIXEL_W) % PIXEL_W;
@@ -1460,7 +1589,7 @@ function drawScene() {
     drawTowerBeacons();
     drawEarthPollution();
 
-    // foreground strip (grass on Earth, dust on Mars)
+    // foreground strip
     if (currentMap === 'mars') {
         ctx.fillStyle = '#7a2f1f';
         ctx.fillRect(0, PIXEL_H - 12, PIXEL_W, 12);
@@ -1469,6 +1598,8 @@ function drawScene() {
             const gx = ((i * 33 - scrollX * 1.6) % PIXEL_W + PIXEL_W) % PIXEL_W;
             ctx.fillRect(gx, PIXEL_H - 8, 3, 8);
         }
+    } else if (currentMap === 'nuclear') {
+        drawNuclearScene();
     } else {
         ctx.fillStyle = '#2c6e34';
         ctx.fillRect(0, PIXEL_H - 12, PIXEL_W, 12);
@@ -1479,8 +1610,8 @@ function drawScene() {
         }
     }
 
-    // trees: the bigger your city, the more greenery fills the foreground (Earth only)
-    if (currentMap === 'earth') {
+    // trees: the bigger your city, the more greenery fills the foreground
+    if (currentMap === 'earth' || currentMap === 'nuclear') {
         const totalOwned = state.buildings.reduce((a, b) => a + b, 0);
         drawTrees(Math.min(10, Math.floor(totalOwned / 10)));
     }
@@ -1489,6 +1620,7 @@ function drawScene() {
     planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
     planeY = 46 + Math.round(Math.sin(frame * 0.04) * 4);
     if (currentMap === 'mars') drawMarsRocket(planeX, planeY, frenzyActive());
+    else if (currentMap === 'nuclear') drawNuclearReactor(planeX, planeY, frenzyActive());
     else drawPlane(planeX, planeY, frenzyActive());
     drawClickHint();
     drawCombo();
@@ -1623,7 +1755,7 @@ document.addEventListener('keydown', (e) => {
 
 document.getElementById('resetBtn').onclick = () => {
     if (!confirm('Reset all progress? This cannot be undone.')) return;
-    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
+    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.concat(nuclearBuildings).map(() => 0), totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
     combo = 0;
     comboEndsAt = 0;
     frenzy.active = false;
@@ -1644,8 +1776,8 @@ function loadFrom(data) {
     state.clickPower = data.clickPower ?? 1;
     state.clickLevel = data.clickLevel ?? 0;
     state.buildings = data.buildings ?? buildings.map(() => 0);
-    while (state.buildings.length < buildings.length) state.buildings.push(0);
-    state.buildings.length = buildings.length;
+    while (state.buildings.length < buildings.length + nuclearBuildings.length) state.buildings.push(0);
+    state.buildings.length = buildings.length + nuclearBuildings.length;
     state.totalClicks = data.totalClicks ?? 0;
     state.totalEarned = data.totalEarned ?? 0;
     state.achievements = Array.isArray(data.achievements) ? data.achievements : [];
