@@ -290,7 +290,8 @@ function buildingMap(i) {
     return nuclearBuildings[ni] ? nuclearBuildings[ni].map : 'earth';
 }
 function incomePerSec() {
-    const base = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0);
+    const all = buildings.concat(nuclearBuildings);
+    const base = all.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0);
     return base * incomeMult() * boostMult() * (1 - pollutionPenalty());
 }
 function incomeMult() {
@@ -377,7 +378,7 @@ let metaSig = '';
 // Persistent building slots so buying one type never reflows (and visually
 // deletes) buildings of another type. These are synced lazily when counts change.
 let placementSlots = { earth: [[], [], []], mars: [[], [], []], nuclear: [[], [], []] };
-let placementCounts = buildings.map(() => 0);
+let placementCounts = buildings.concat(nuclearBuildings).map(() => 0);
 
 function invalidateLayers() { layersDirty = true; tilesDirty = true; }
 
@@ -390,18 +391,19 @@ function getBuildingLayers() {
 
 function syncPlacements() {
     let changed = false;
-    for (let tier = 0; tier < buildings.length; tier++) {
+    for (let tier = 0; tier < buildings.length + nuclearBuildings.length; tier++) {
         if (state.buildings[tier] !== placementCounts[tier]) { changed = true; break; }
     }
     if (!changed) return;
 
     // Decreases (reset/import) rebuild from scratch.
-    const anyDecrease = buildings.some((b, tier) => state.buildings[tier] < placementCounts[tier]);
+    const totalTiers = buildings.length + nuclearBuildings.length;
+    const anyDecrease = Array.from({length: totalTiers}, (_, t) => t).some(t => state.buildings[t] < placementCounts[t]);
     if (anyDecrease) { buildPlacementsFromScratch(); return; }
 
     // Only increases: append new buildings at the end of their layer so
     // existing buildings keep their exact slot and never shift away.
-    buildings.forEach((b, tier) => {
+    buildings.concat(nuclearBuildings).forEach((b, tier) => {
         const prev = placementCounts[tier];
         const current = state.buildings[tier];
         if (current <= prev) return;
@@ -421,9 +423,9 @@ function syncPlacements() {
 }
 
 function buildPlacementsFromScratch() {
-    placementSlots = { earth: [[], [], []], mars: [[], [], []] };
-    const cursors = { earth: [0, 0, 0], mars: [0, 0, 0] };
-    buildings.forEach((b, tier) => {
+    placementSlots = { earth: [[], [], []], mars: [[], [], []], nuclear: [[], [], []] };
+    const cursors = { earth: [0, 0, 0], mars: [0, 0, 0], nuclear: [0, 0, 0] };
+    buildings.concat(nuclearBuildings).forEach((b, tier) => {
         const s = BUILDING_STYLES[tier];
         const map = buildingMap(tier);
         for (let i = 0; i < state.buildings[tier]; i++) {
@@ -720,15 +722,18 @@ const nuclearBuildings = [
 ];
 function updateMapBtn() {
     const labels = { earth: '🌍 Earth', mars: '🔴 Mars', nuclear: '☢️ Nuclear' };
-    if (nuclearUnlocked() && marsUnlocked()) {
-        const next = { earth: 'mars', mars: 'nuclear', nuclear: 'earth' };
-        mapBtn.textContent = '→ ' + labels[next[currentMap]];
-    } else if (marsUnlocked()) {
-        mapBtn.textContent = nuclearUnlocked()
-            ? (currentMap === 'mars' ? '☢️ Nuclear' : '🔴 Mars')
-            : '☢️ Nuclear ($' + fmt(NUCLEAR_COST) + ')';
-    } else {
+    const next = { earth: 'mars', mars: nuclearUnlocked() ? 'nuclear' : 'earth', nuclear: 'earth' };
+    const target = next[currentMap];
+    if (target === 'earth') {
+        mapBtn.textContent = '→ ' + labels.earth;
+    } else if (target === 'mars' && marsUnlocked()) {
+        mapBtn.textContent = '→ ' + labels.mars;
+    } else if (target === 'nuclear' && nuclearUnlocked()) {
+        mapBtn.textContent = '→ ' + labels.nuclear;
+    } else if (target === 'mars') {
         mapBtn.textContent = '🚀 Mars ($' + fmt(MARS_COST) + ')';
+    } else {
+        mapBtn.textContent = '☢️ Nuclear ($' + fmt(NUCLEAR_COST) + ')';
     }
 }
 mapBtn.onclick = () => {
