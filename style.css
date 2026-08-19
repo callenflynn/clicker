@@ -211,7 +211,15 @@ canvas {
     to { opacity: 1; transform: translateY(0); }
 }
 
-#toolbar { margin-top: 12px; }
+#toolbar { margin-top: 12px; display: flex; gap: 10px; justify-content: center; }
+#mapBtn {
+    background: #c2571f;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+}
+#mapBtn:hover { background: #9c4518; }
 #resetBtn {
     background: #dc2626;
     color: #fff;

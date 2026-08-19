@@ -10,6 +10,7 @@ const buildings = [
     { name: 'Apartment',  baseCost: 1100,         costMult: 1.15, income: 8   },
     { name: 'Office',     baseCost: 12000,        costMult: 1.15, income: 47  },
     { name: 'Skyscraper', baseCost: 130000,       costMult: 1.15, income: 260 },
+    { name: 'Factory',    baseCost: 600000,       costMult: 1.15, income: 1200, pollution: 2 },
     { name: 'Warehouse',  baseCost: 1500000,      costMult: 1.15, income: 1400 },
     { name: 'Mall',       baseCost: 17000000,     costMult: 1.15, income: 7800 },
     { name: 'Stadium',    baseCost: 200000000,    costMult: 1.15, income: 44000 },
@@ -29,6 +30,7 @@ const BUILDING_STYLES = [
     { w: 16, h: 28, body: '#b07840', dark: '#7a4d22', layer: 1, kind: 'brick' }, // Apartment
     { w: 20, h: 34, body: '#6b6f76', dark: '#464a50', layer: 2, kind: 'brick' }, // Office
     { w: 22, h: 44, body: '#4d5a6b', dark: '#303b49', layer: 2, kind: 'brick' }, // Skyscraper
+    { w: 28, h: 26, body: '#6e7a86', dark: '#46505a', layer: 1, kind: 'factory' }, // Factory
     { w: 26, h: 20, body: '#8a6d4b', dark: '#5c4730', layer: 0, kind: 'warehouse' }, // Warehouse
     { w: 28, h: 30, body: '#5b8a72', dark: '#3a5c4a', layer: 1, kind: 'mall' }, // Mall
     { w: 30, h: 24, body: '#9aa0a8', dark: '#6a7078', layer: 1, kind: 'dome' }, // Stadium
@@ -94,20 +96,21 @@ const ACHIEVEMENTS = [
     { id: 'buildings_500', name: 'Metropolis', desc: 'Own 500 buildings', check: s => s.buildings.reduce((a, b) => a + b, 0) >= 500 },
     { id: 'buildings_1000', name: 'Mega City', desc: 'Own 1,000 buildings', check: s => s.buildings.reduce((a, b) => a + b, 0) >= 1000 },
     { id: 'balloon', name: 'Up, Up & Away', desc: 'Catch a hot air balloon', check: s => s.balloonsCaught >= 1 },
-    { id: 'warehouse_25', name: 'Logistics Lord', desc: 'Own 25 warehouses', check: s => s.buildings[5] >= 25 },
-    { id: 'mall_10', name: 'Retail King', desc: 'Own 10 malls', check: s => s.buildings[6] >= 10 },
-    { id: 'stadium_5', name: 'Home Field Advantage', desc: 'Own 5 stadiums', check: s => s.buildings[7] >= 5 },
-    { id: 'airport_1', name: 'Clear for Takeoff', desc: 'Own an airport', check: s => s.buildings[8] >= 1 },
-    { id: 'spaceport_1', name: 'To Infinity', desc: 'Own a spaceport', check: s => s.buildings[9] >= 1 },
+    { id: 'warehouse_25', name: 'Logistics Lord', desc: 'Own 25 warehouses', check: s => s.buildings[6] >= 25 },
+    { id: 'factory_10', name: 'Smokestack', desc: 'Own 10 factories', check: s => s.buildings[5] >= 10 },
+    { id: 'mall_10', name: 'Retail King', desc: 'Own 10 malls', check: s => s.buildings[7] >= 10 },
+    { id: 'stadium_5', name: 'Home Field Advantage', desc: 'Own 5 stadiums', check: s => s.buildings[8] >= 5 },
+    { id: 'airport_1', name: 'Clear for Takeoff', desc: 'Own an airport', check: s => s.buildings[9] >= 1 },
+    { id: 'spaceport_1', name: 'To Infinity', desc: 'Own a spaceport', check: s => s.buildings[10] >= 1 },
     { id: 'frenzy', name: 'Strike Gold', desc: 'Trigger a Golden Plane frenzy', check: s => s.frenziesTriggered >= 1 },
     { id: 'boost', name: 'Tailwind', desc: 'Catch an income boost plane', check: s => s.boostsCaught >= 1 },
-    { id: 'lunar_1', name: 'One Small Step', desc: 'Own a Lunar Base', check: s => s.buildings[10] >= 1 },
-    { id: 'station_1', name: 'Orbital', desc: 'Own an Orbital Station', check: s => s.buildings[11] >= 1 },
-    { id: 'mars_1', name: 'Red Planet', desc: 'Own a Mars Colony', check: s => s.buildings[12] >= 1 },
-    { id: 'mine_1', name: 'Belt and Braces', desc: 'Own an Asteroid Mine', check: s => s.buildings[13] >= 1 },
-    { id: 'swarm_1', name: 'Star Power', desc: 'Own a Dyson Swarm', check: s => s.buildings[14] >= 1 },
-    { id: 'datacenter_1', name: 'Compute Core', desc: 'Own an AI Datacenter', check: s => s.buildings[15] >= 1 },
-    { id: 'datacenter_10', name: 'Smog City', desc: 'Own 10 AI Datacenters', check: s => s.buildings[15] >= 10 }
+    { id: 'lunar_1', name: 'One Small Step', desc: 'Own a Lunar Base', check: s => s.buildings[11] >= 1 },
+    { id: 'station_1', name: 'Orbital', desc: 'Own an Orbital Station', check: s => s.buildings[12] >= 1 },
+    { id: 'mars_1', name: 'Red Planet', desc: 'Own a Mars Colony', check: s => s.buildings[13] >= 1 },
+    { id: 'mine_1', name: 'Belt and Braces', desc: 'Own an Asteroid Mine', check: s => s.buildings[14] >= 1 },
+    { id: 'swarm_1', name: 'Star Power', desc: 'Own a Dyson Swarm', check: s => s.buildings[15] >= 1 },
+    { id: 'datacenter_1', name: 'Compute Core', desc: 'Own an AI Datacenter', check: s => s.buildings[16] >= 1 },
+    { id: 'datacenter_10', name: 'Smog City', desc: 'Own 10 AI Datacenters', check: s => s.buildings[16] >= 10 }
 ];
 
 const moneyEl = document.getElementById('money');
@@ -527,7 +530,60 @@ function closeShop() {
     shopBackdrop.classList.remove('open');
 }
 
+// ---- map switching (Earth / Mars) ----
+const MARS_COST = 1e7;
+const MARS_KEY = 'clih-mars-unlocked';
+let currentMap = 'earth';
+const mapBtn = document.getElementById('mapBtn');
+
+function marsUnlocked() {
+    return localStorage.getItem(MARS_KEY) === '1';
+}
+function updateMapBtn() {
+    if (marsUnlocked()) {
+        mapBtn.textContent = currentMap === 'mars' ? '🌍 Earth' : '🔴 Mars';
+    } else {
+        mapBtn.textContent = '🚀 Mars ($' + fmt(MARS_COST) + ')';
+    }
+}
+mapBtn.onclick = () => {
+    if (marsUnlocked()) {
+        currentMap = currentMap === 'mars' ? 'earth' : 'mars';
+        showToast(currentMap === 'mars' ? '🔴 Switched to Mars' : '🌍 Switched to Earth');
+    } else if (state.money >= MARS_COST) {
+        state.money -= MARS_COST;
+        localStorage.setItem(MARS_KEY, '1');
+        currentMap = 'mars';
+        showToast('🔴 Mars unlocked!');
+        update();
+    } else {
+        showToast('Need $' + fmt(MARS_COST) + ' to unlock Mars');
+    }
+    updateMapBtn();
+};
+updateMapBtn();
+
+let saveMigrated = false;
+function migrateSave() {
+    if (saveMigrated) return;
+    saveMigrated = true;
+    try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        // Factory was inserted at index 5; older saves kept the industrial
+        // tiers one slot earlier. loadFrom already padded the array, so
+        // splice the new slot in and drop the trailing zero.
+        if (Array.isArray(data.buildings) && data.buildings.length < buildings.length) {
+            state.buildings.splice(5, 0, 0);
+            state.buildings.length = buildings.length;
+            save();
+        }
+    } catch (e) {}
+}
+
 function update() {
+    migrateSave();
     checkAchievements();
 
     moneyEl.textContent = '$' + fmt(state.money);
@@ -549,7 +605,7 @@ function update() {
         const mult = buildingMult(i);
         const nm = nextMilestone(i);
         let text = (mult > 1 ? '×' + mult + ' income' : '') + (nm ? (mult > 1 ? ' · ' : '') + '×2 at ' + nm + ' owned' : '');
-        if (b.pollution) text += (text ? ' · ' : '') + '⚠️ -0.5% income each';
+        if (b.pollution) text += (text ? ' · ' : '') + '⚠️ -' + (b.pollution * 0.5) + '% income each';
         sub.textContent = text;
     });
 
@@ -771,6 +827,26 @@ function drawDatacenter(c, x, y, w, h, body, dark) {
     c.fillRect(x + w - 5, y - 6, 1, 2);
 }
 
+function drawFactory(c, x, y, w, h, body, dark) {
+    drawBrickBuilding(c, x, y, w, h, body, dark);
+    // sawtooth roof
+    c.fillStyle = dark;
+    for (let rx = x + 1; rx < x + w - 2; rx += 5) {
+        c.fillRect(rx, y - 2, 4, 2);
+    }
+    // two smokestacks
+    c.fillStyle = '#8a8a8a';
+    c.fillRect(x + 4, y - 10, 3, 10);
+    c.fillRect(x + w - 7, y - 12, 3, 12);
+    // smoke plumes (static, baked into the tile)
+    c.fillStyle = 'rgba(150,150,150,0.85)';
+    c.fillRect(x + 5, y - 13, 1, 3);
+    c.fillRect(x + w - 6, y - 15, 1, 3);
+    // loading door
+    c.fillStyle = dark;
+    c.fillRect(x + Math.floor(w / 2) - 3, y + h - 6, 6, 6);
+}
+
 function drawBuilding(c, kind, x, y, w, h, body, dark) {
     if (kind === 'warehouse') return drawWarehouse(c, x, y, w, h, body, dark);
     if (kind === 'mall') return drawMall(c, x, y, w, h, body, dark);
@@ -781,6 +857,7 @@ function drawBuilding(c, kind, x, y, w, h, body, dark) {
     if (kind === 'drill') return drawDrill(c, x, y, w, h, body, dark);
     if (kind === 'solar') return drawSolar(c, x, y, w, h, body, dark);
     if (kind === 'datacenter') return drawDatacenter(c, x, y, w, h, body, dark);
+    if (kind === 'factory') return drawFactory(c, x, y, w, h, body, dark);
     drawBrickBuilding(c, x, y, w, h, body, dark);
 }
 
@@ -817,9 +894,44 @@ function drawPlane(x, y, gold) {
     }
 }
 
+function drawMarsRocket(x, y, gold) {
+    const body = gold ? '#ffe08a' : '#e8e8f0';
+    const fin = gold ? '#e8a23a' : '#d33';
+    // nose cone
+    ctx.fillStyle = fin;
+    ctx.fillRect(x + 8, y - 2, 3, 3);
+    ctx.fillRect(x + 9, y - 3, 1, 1);
+    // fuselage
+    ctx.fillStyle = body;
+    ctx.fillRect(x + 8, y + 1, 3, 9);
+    // fins
+    ctx.fillStyle = fin;
+    ctx.fillRect(x + 6, y + 7, 2, 3);
+    ctx.fillRect(x + 11, y + 7, 2, 3);
+    // window
+    ctx.fillStyle = '#7cd8ff';
+    ctx.fillRect(x + 9, y + 3, 1, 2);
+    // stripe
+    ctx.fillStyle = fin;
+    ctx.fillRect(x + 8, y + 4, 3, 1);
+    // flame
+    ctx.fillStyle = '#ff9f1c';
+    if (frame % 6 < 3) {
+        ctx.fillRect(x + 9, y + 10, 1, 4);
+    } else {
+        ctx.fillRect(x + 9, y + 10, 1, 2);
+    }
+    if (gold) {
+        ctx.fillStyle = 'rgba(255,210,63,0.55)';
+        ctx.fillRect(x - 1, y - 1, planeW + 2, 1);
+        ctx.fillRect(x - 1, y + planeH, planeW + 2, 1);
+    }
+}
+
 function drawSkyline() {
+    const mars = currentMap === 'mars';
     // distant background buildings (slow parallax, hazy silhouette)
-    ctx.fillStyle = '#a9c8ea';
+    ctx.fillStyle = mars ? '#d8936c' : '#a9c8ea';
     skylineBuildings.forEach(b => {
         const sx = ((b.x - scrollX * 0.35) % SKYLINE_SPAN + SKYLINE_SPAN) % SKYLINE_SPAN;
         [sx - SKYLINE_SPAN, sx, sx + SKYLINE_SPAN].forEach(x => {
@@ -828,7 +940,7 @@ function drawSkyline() {
         });
     });
     // haze where the city meets the sky
-    ctx.fillStyle = '#cfe4f7';
+    ctx.fillStyle = mars ? '#e0a47c' : '#cfe4f7';
     ctx.fillRect(0, SKYLINE_Y - 1, PIXEL_W, 2);
 }
 
@@ -1022,6 +1134,10 @@ function drawSmog() {
     const p = pollution();
     if (p <= 0) return;
     const alpha = Math.min(p * 0.03, 0.65);
+    // brownish haze drifting across the sky itself
+    ctx.fillStyle = 'rgba(150, 132, 104, ' + (alpha * 0.45).toFixed(3) + ')';
+    ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
+    // thick smog hugging the city
     ctx.fillStyle = 'rgba(105, 95, 80, ' + alpha.toFixed(3) + ')';
     ctx.fillRect(0, SKYLINE_Y - 8, PIXEL_W, PIXEL_H - SKYLINE_Y + 8);
     ctx.fillStyle = 'rgba(90, 82, 70, ' + (alpha * 0.7).toFixed(3) + ')';
@@ -1030,34 +1146,36 @@ function drawSmog() {
 
 function drawScene() {
     // sky
-    ctx.fillStyle = '#9ad0ff';
+    ctx.fillStyle = currentMap === 'mars' ? '#c98a5b' : '#9ad0ff';
     ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
 
     // background city + haze (behind everything else)
     drawSkyline();
 
-    // clouds (slow parallax)
-    ctx.fillStyle = '#ffffff';
-    clouds.forEach(c => {
-        const span = PIXEL_W + 40;
-        const cx = ((c.x - scrollX * 0.4) % span + span) % span - 20;
-        ctx.fillRect(cx, c.y, c.w, 4);
-    });
-
-    // occasional flock of birds
-    drawBirds();
+    // clouds + birds (Earth only)
+    if (currentMap === 'earth') {
+        ctx.fillStyle = '#ffffff';
+        clouds.forEach(c => {
+            const span = PIXEL_W + 40;
+            const cx = ((c.x - scrollX * 0.4) % span + span) % span - 20;
+            ctx.fillRect(cx, c.y, c.w, 4);
+        });
+        drawBirds();
+    }
 
     // ground plane from the horizon down
-    ctx.fillStyle = '#3f9b3f';
+    ctx.fillStyle = currentMap === 'mars' ? '#a3442e' : '#3f9b3f';
     ctx.fillRect(0, SKYLINE_Y, PIXEL_W, PIXEL_H - SKYLINE_Y);
-    ctx.fillStyle = '#358335';
+    ctx.fillStyle = currentMap === 'mars' ? '#8c3a28' : '#358335';
     ctx.fillRect(0, SKYLINE_Y, PIXEL_W, 2);
 
-    // scrolling grass tufts (mid-ground parallax)
-    ctx.fillStyle = '#2f7a2f';
-    for (let i = 0; i < 8; i++) {
-        const gx = ((i * 45 - scrollX) % PIXEL_W + PIXEL_W) % PIXEL_W;
-        ctx.fillRect(gx, GROUND_Y + 5, 2, 4);
+    // scrolling grass tufts (Earth only)
+    if (currentMap === 'earth') {
+        ctx.fillStyle = '#2f7a2f';
+        for (let i = 0; i < 8; i++) {
+            const gx = ((i * 45 - scrollX) % PIXEL_W + PIXEL_W) % PIXEL_W;
+            ctx.fillRect(gx, GROUND_Y + 5, 2, 4);
+        }
     }
 
     // player's buildings, layered back-to-front for natural depth.
@@ -1080,23 +1198,36 @@ function drawScene() {
     drawTowerBeacons();
     drawSmog();
 
-    // foreground grass strip (fast parallax, closest layer)
-    ctx.fillStyle = '#2c6e34';
-    ctx.fillRect(0, PIXEL_H - 12, PIXEL_W, 12);
-    ctx.fillStyle = '#1f5227';
-    for (let i = 0; i < 12; i++) {
-        const gx = ((i * 33 - scrollX * 1.6) % PIXEL_W + PIXEL_W) % PIXEL_W;
-        ctx.fillRect(gx, PIXEL_H - 8, 3, 8);
+    // foreground strip (grass on Earth, dust on Mars)
+    if (currentMap === 'mars') {
+        ctx.fillStyle = '#7a2f1f';
+        ctx.fillRect(0, PIXEL_H - 12, PIXEL_W, 12);
+        ctx.fillStyle = '#5c2317';
+        for (let i = 0; i < 12; i++) {
+            const gx = ((i * 33 - scrollX * 1.6) % PIXEL_W + PIXEL_W) % PIXEL_W;
+            ctx.fillRect(gx, PIXEL_H - 8, 3, 8);
+        }
+    } else {
+        ctx.fillStyle = '#2c6e34';
+        ctx.fillRect(0, PIXEL_H - 12, PIXEL_W, 12);
+        ctx.fillStyle = '#1f5227';
+        for (let i = 0; i < 12; i++) {
+            const gx = ((i * 33 - scrollX * 1.6) % PIXEL_W + PIXEL_W) % PIXEL_W;
+            ctx.fillRect(gx, PIXEL_H - 8, 3, 8);
+        }
     }
 
-    // trees: the bigger your city, the more greenery fills the foreground
-    const totalOwned = state.buildings.reduce((a, b) => a + b, 0);
-    drawTrees(Math.min(10, Math.floor(totalOwned / 10)));
+    // trees: the bigger your city, the more greenery fills the foreground (Earth only)
+    if (currentMap === 'earth') {
+        const totalOwned = state.buildings.reduce((a, b) => a + b, 0);
+        drawTrees(Math.min(10, Math.floor(totalOwned / 10)));
+    }
 
-    // plane centered, bobbing (gold while a frenzy is active)
+    // clickable ship centered, bobbing (rocket on Mars, plane on Earth)
     planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
     planeY = 46 + Math.round(Math.sin(frame * 0.04) * 4);
-    drawPlane(planeX, planeY, frenzyActive());
+    if (currentMap === 'mars') drawMarsRocket(planeX, planeY, frenzyActive());
+    else drawPlane(planeX, planeY, frenzyActive());
     drawClickHint();
     drawCombo();
     drawBalloon();
