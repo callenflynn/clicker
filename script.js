@@ -133,6 +133,7 @@ const ACHIEVEMENTS = [
 
 const moneyEl = document.getElementById('money');
 const incomeEl = document.getElementById('income');
+const hintEl = document.getElementById('hint');
 
 const shopItemsEl = document.getElementById('shopItems');
 const buyModesEl = document.getElementById('buyModes');
@@ -562,7 +563,9 @@ function clickPlane() {
     let text = '+$' + fmt(amount);
     if (crit) text = 'CRIT +$' + fmt(amount);
     if (frenzyOn) text += ' ×' + FRENZY_MULT;
-    floaters.push({ x: planeX, y: planeY, text: text, crit: crit || frenzyOn, life: 40 });
+    const fx = currentMap === 'nuclear' ? 100 : planeX;
+    const fy = currentMap === 'nuclear' ? 40 : planeY;
+    floaters.push({ x: fx, y: fy, text: text, crit: crit || frenzyOn, life: 40 });
     update();
 }
 
@@ -571,7 +574,7 @@ function clickPlane() {
 // fire repeated keydown events; stopImmediatePropagation keeps the later
 // handler from also clicking on the same press.
 document.addEventListener('keydown', (e) => {
-    if (e.code !== 'Space' || shopPanel.classList.contains('open')) return;
+    if (e.code !== 'Space' || shopPanel.classList.contains('open') || currentMap === 'nuclear') return;
     e.preventDefault();
     if (e.repeat) { e.stopImmediatePropagation(); return; }
     if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
@@ -822,6 +825,9 @@ function update() {
 
     moneyEl.textContent = '$' + fmt(state.money);
     incomeEl.textContent = '$' + fmt(incomePerSec()) + ' / sec';
+    hintEl.textContent = currentMap === 'nuclear'
+        ? 'The nuclear world is passive — upgrade the plant and watch the river turn green.'
+        : 'Click the plane to earn money. Buy buildings to grow your city.';
 
     const cpInfo = clickPowerBuyInfo();
     cpBtn.textContent = 'Click Power (lvl ' + state.clickLevel + ') - $' + fmt(cpInfo.cost) + (cpInfo.n > 1 ? ' (×' + cpInfo.n + ')' : '');
@@ -1315,101 +1321,224 @@ function drawEarthPollution() {
 
 function drawNuclearReactor(x, y, gold) {
     const lvl = state.plantLevel;
-    const glow = Math.min(1, lvl / 10);
-    const body = gold ? '#ffe08a' : '#d0d0d8';
-    const dark = gold ? '#c8a030' : '#808090';
-    // base platform on the river bank
+    const glow = Math.min(1, lvl / 12);
+    const baseY = PIXEL_H - 8;           // ground line the plant stands on
+    const bodyL = '#c9c9d2';
+    const bodyD = '#7e7e88';
+    const towerL = '#b8b8c2';
+    const towerD = '#7a7a86';
+
+    // concrete pad under everything
     ctx.fillStyle = '#606068';
-    ctx.fillRect(x - 3, y + planeH + 2, planeW + 6, 3);
-    // reactor dome
-    ctx.fillStyle = body;
-    ctx.fillRect(x + 2, y + 2, 14, 8);
-    ctx.fillRect(x + 4, y, 10, 2);
-    // control rod / core glow — brighter with upgrades
+    ctx.fillRect(2, baseY, 108, 3);
+
+    // ---- cooling towers (hyperboloid silhouettes) — upgrades bolt on more ----
+    function coolingTower(cx, topY, h) {
+        for (let yy = topY; yy < baseY; yy++) {
+            const t = Math.min(1, (yy - topY) / h);
+            let hw;
+            if (t < 0.5) hw = 8 - (8 - 5) * (t / 0.5);
+            else hw = 5 + (11 - 5) * ((t - 0.5) / 0.5);
+            hw = Math.round(hw);
+            ctx.fillStyle = towerL;
+            ctx.fillRect(cx - hw, yy, hw * 2, 1);
+            ctx.fillStyle = towerD;
+            ctx.fillRect(cx, yy, hw, 1);
+        }
+        ctx.fillStyle = towerD;
+        ctx.fillRect(cx - 10, topY - 1, 20, 2);
+    }
+
+    // ---- main smokestack: as tall as the window ----
+    const stackCx = 64, stackW = 8;
+    ctx.fillStyle = bodyL;
+    for (let yy = y; yy < baseY; yy++) ctx.fillRect(stackCx - 4, yy, stackW, 1);
+    ctx.fillStyle = bodyD;
+    for (let yy = y; yy < baseY; yy++) ctx.fillRect(stackCx + 1, yy, 3, 1);
+    // hazard bands every 14px
+    ctx.fillStyle = '#b03a2a';
+    for (let yy = y + 10; yy < baseY - 4; yy += 14) ctx.fillRect(stackCx - 4, yy, 8, 2);
+    // lip + rim at the top
+    ctx.fillStyle = bodyD;
+    ctx.fillRect(stackCx - 6, y - 2, 12, 2);
+    ctx.fillStyle = '#55555e';
+    ctx.fillRect(stackCx - 6, y - 2, 12, 1);
+
+    // ---- reactor building at the base ----
+    ctx.fillStyle = '#9a9aa6';
+    ctx.fillRect(24, baseY - 16, 66, 16);
+    ctx.fillStyle = '#5c5c68';
+    ctx.fillRect(24, baseY - 16, 66, 2);
+    ctx.fillStyle = '#787884';
+    for (let wx = 26; wx < 88; wx += 8) ctx.fillRect(wx, baseY - 13, 4, 1);
+    // core window — glows brighter with upgrades
     ctx.fillStyle = mixColor('#44ff88', '#ccff44', glow);
-    ctx.fillRect(x + 7, y + 4, 4, 3);
+    ctx.fillRect(46, baseY - 11, 9, 6);
     if (lvl >= 3) {
-        ctx.fillStyle = 'rgba(140,255,140,0.6)';
-        ctx.fillRect(x + 6, y + 3, 6, 3);
+        ctx.fillStyle = 'rgba(140,255,140,' + (0.25 + glow * 0.4).toFixed(2) + ')';
+        ctx.fillRect(44, baseY - 13, 13, 10);
     }
-    // cooling stacks — more of them as the plant grows
-    ctx.fillStyle = dark;
-    ctx.fillRect(x + 1, y - 6, 3, 8);
-    ctx.fillRect(x + 15, y - 4, 3, 6);
-    if (lvl >= 5) {
-        ctx.fillRect(x + 4, y - 8, 2, 10);
-        ctx.fillRect(x + 13, y - 7, 2, 9);
+    // radiation trefoil on the building wall
+    ctx.fillStyle = '#ffb400';
+    ctx.fillRect(63, baseY - 10, 2, 2);
+    ctx.fillRect(63, baseY - 14, 2, 2);
+    ctx.fillRect(61, baseY - 8, 2, 2);
+    ctx.fillRect(65, baseY - 8, 2, 2);
+
+    // ---- upgrades bolt more onto the plant ----
+    if (lvl >= 1) coolingTower(30, 88, 54);
+    if (lvl >= 5) coolingTower(12, 62, 80);
+    if (lvl >= 10) coolingTower(46, 106, 36);
+    if (lvl >= 20) {
+        // auxiliary smokestack beside the main one
+        ctx.fillStyle = bodyL;
+        for (let yy = 58; yy < baseY; yy++) ctx.fillRect(77, yy, 5, 1);
+        ctx.fillStyle = bodyD;
+        for (let yy = 58; yy < baseY; yy++) ctx.fillRect(79, yy, 3, 1);
+        ctx.fillStyle = '#b03a2a';
+        for (let yy = 68; yy < baseY - 6; yy += 12) ctx.fillRect(77, yy, 5, 2);
+        ctx.fillStyle = bodyD;
+        ctx.fillRect(75, 56, 9, 2);
     }
-    if (lvl >= 10) {
-        ctx.fillRect(x - 1, y - 10, 2, 12);
-        ctx.fillRect(x + 17, y - 9, 2, 11);
+
+    // ---- smoke — starts once powered, grows with level ----
+    if (lvl >= 1) {
+        const stacks = [{ cx: stackCx, top: y - 4 }];
+        if (lvl >= 10) stacks.push({ cx: 46, top: 102 });
+        if (lvl >= 20) stacks.push({ cx: 80, top: 54 });
+        const puffCols = Math.min(4, 2 + Math.floor(lvl / 6));
+        stacks.forEach((st, si) => {
+            for (let i = 0; i < puffCols; i++) {
+                const drift = ((frame * 0.35 + si * 7 + i * 9) % 6);
+                const px = st.cx - 6 + i * 4 + Math.floor(drift / 2);
+                const py = st.top - 5 - i * 3 - Math.floor(drift);
+                ctx.fillStyle = 'rgba(205,205,210,' + (0.55 - i * 0.12).toFixed(2) + ')';
+                ctx.fillRect(px, py, 6, 3);
+                ctx.fillRect(px + 1, py - 1, 4, 2);
+            }
+        });
     }
-    // smoke puffs — more at higher levels
-    ctx.fillStyle = 'rgba(180,180,180,0.5)';
-    const puffs = lvl >= 5 ? 3 : 2;
-    if (frame % 20 < 10) {
-        for (let i = 0; i < puffs; i++) ctx.fillRect(x + i * 8 - 2, y - 12 + i * 2, 4, 3);
-    } else {
-        for (let i = 0; i < puffs; i++) ctx.fillRect(x + i * 8 - 1, y - 14 + i * 2, 5, 3);
-    }
-    // radiation warning symbol
-    ctx.fillStyle = '#ffaa00';
-    ctx.fillRect(x + 8, y + 2, 2, 2);
+
+    // frenzy halo
     if (gold) {
         ctx.fillStyle = 'rgba(255,210,63,0.55)';
-        ctx.fillRect(x - 1, y - 1, planeW + 2, 1);
-        ctx.fillRect(x - 1, y + planeH, planeW + 2, 1);
+        ctx.fillRect(2, y - 3, 108, 1);
+        ctx.fillRect(2, baseY + 2, 108, 1);
+        ctx.fillStyle = 'rgba(255,210,63,0.3)';
+        ctx.fillRect(2, y - 3, 1, baseY - y + 5);
+        ctx.fillRect(109, y - 3, 1, baseY - y + 5);
     }
 }
 
 function drawNuclearScene() {
     const rp = nuclearRiverPollution();
-    const riverY = PIXEL_H - 20;
-    const riverH = 12;
-    // water base — shifts from blue to toxic green as you upgrade the plant
-    ctx.fillStyle = mixColor('#3a7aaa', '#4a8a3a', rp);
-    ctx.fillRect(0, riverY, PIXEL_W, riverH);
+    const water = mixColor('#3a7aaa', '#4a8a3a', rp);
+    const waterLite = mixColor('#5aa0cc', '#6aaa4a', rp);
+    const bank = mixColor('#4a5a3a', '#3a4a2a', rp);
+    const bankDark = mixColor('#3a4a2a', '#2a3a1e', rp);
+
+    // River on the right: narrow far end up top, widening as it flows
+    // toward the viewer (bottom of the screen).
+    const y0 = SKYLINE_Y + 2, y1 = PIXEL_H;
+    const farCx = 252, farHw = 8;
+    const nearCx = 258, nearHw = 62;
+
+    // banks first (slightly wider than the water), then water
+    for (let yy = y0; yy < y1; yy++) {
+        const t = (yy - y0) / (y1 - y0);
+        const cx = Math.round(farCx + (nearCx - farCx) * t);
+        const hw = Math.round(farHw + (nearHw - farHw) * t);
+        ctx.fillStyle = yy === y1 - 1 ? bankDark : bank;
+        ctx.fillRect(cx - hw - 4, yy, hw * 2 + 8, 1);
+        ctx.fillStyle = water;
+        ctx.fillRect(cx - hw, yy, hw * 2, 1);
+    }
+
+    // flow streaks streaming toward the viewer
+    ctx.fillStyle = waterLite;
+    for (let i = 0; i < 7; i++) {
+        const t = ((i * 7.3 + frame * 0.5) % 46) / 46;
+        const yy = Math.round(y0 + t * (y1 - y0));
+        const cx = Math.round(farCx + (nearCx - farCx) * t);
+        const hw = Math.round(farHw + (nearHw - farHw) * t);
+        const len = 4 + Math.round(t * 26);
+        const sx = cx - hw + 4 + ((i * 17) % Math.max(2, hw * 2 - len - 8));
+        ctx.fillRect(sx, yy, len, 1);
+    }
+
     // murky layer at higher pollution
-    if (rp > 0.35) {
-        ctx.fillStyle = 'rgba(30, 60, 25, ' + ((rp - 0.35) * 0.65).toFixed(2) + ')';
-        ctx.fillRect(0, riverY, PIXEL_W, riverH);
+    if (rp > 0.3) {
+        ctx.fillStyle = 'rgba(30, 60, 25, ' + ((rp - 0.3) * 0.65).toFixed(2) + ')';
+        for (let yy = y0; yy < y1; yy++) {
+            const t = (yy - y0) / (y1 - y0);
+            const cx = Math.round(farCx + (nearCx - farCx) * t);
+            const hw = Math.round(farHw + (nearHw - farHw) * t);
+            ctx.fillRect(cx - hw, yy, hw * 2, 1);
+        }
     }
-    // shimmer
-    ctx.fillStyle = mixColor('#5aa0cc', '#6aaa4a', rp);
-    for (let i = 0; i < 8; i++) {
-        const sx = ((i * 42 + 5 - scrollX * 0.3) % PIXEL_W + PIXEL_W) % PIXEL_W;
-        ctx.fillRect(sx, riverY + 3 + (i % 3) * 2, 10 + (i % 2) * 4, 1);
-    }
+
     // toxic foam — more of it the greener the river gets
-    if (rp > 0.15) {
-        ctx.fillStyle = 'rgba(120, 190, 60, ' + Math.min(0.6, (rp - 0.15) * 0.7).toFixed(2) + ')';
+    if (rp > 0.12) {
+        ctx.fillStyle = 'rgba(120, 190, 60, ' + Math.min(0.6, (rp - 0.12) * 0.7).toFixed(2) + ')';
         const foam = Math.round(3 + rp * 9);
         for (let i = 0; i < foam; i++) {
-            const fx = ((i * 53 + 11 - scrollX * 0.4) % PIXEL_W + PIXEL_W) % PIXEL_W;
-            ctx.fillRect(fx, riverY + 2 + (i % 4) * 2, 6 + (i % 3) * 2, 2);
+            const t = ((i * 9.7 + 5 + frame * 0.6) % 50) / 50;
+            const yy = Math.round(y0 + t * (y1 - y0));
+            const cx = Math.round(farCx + (nearCx - farCx) * t);
+            const hw = Math.round(farHw + (nearHw - farHw) * t);
+            const len = 4 + Math.round(t * 14);
+            const sx = cx - hw + 2 + ((i * 13) % Math.max(2, hw * 2 - len - 4));
+            ctx.fillRect(sx, yy, len, 2);
         }
     }
-    // radiation glint at high pollution
-    if (rp > 0.6) {
-        ctx.fillStyle = 'rgba(140, 255, 120, ' + ((rp - 0.6) * 0.55).toFixed(2) + ')';
+
+    // radiation glints at high pollution
+    if (rp > 0.55) {
+        ctx.fillStyle = 'rgba(140, 255, 120, ' + ((rp - 0.55) * 0.55).toFixed(2) + ')';
         for (let i = 0; i < 4; i++) {
-            const gx = ((i * 71 + 5 - scrollX * 0.35) % PIXEL_W + PIXEL_W) % PIXEL_W;
-            ctx.fillRect(gx, riverY + 3 + (i % 2) * 5, 2, 2);
+            const t = ((i * 13.3 + 3 + frame * 0.4) % 52) / 52;
+            const yy = Math.round(y0 + t * (y1 - y0));
+            const cx = Math.round(farCx + (nearCx - farCx) * t);
+            const hw = Math.round(farHw + (nearHw - farHw) * t);
+            const sx = cx - hw + 4 + ((i * 19) % Math.max(2, hw * 2 - 8));
+            ctx.fillRect(sx, yy, 2, 2);
         }
     }
-    // river banks — browner and sicker with pollution
-    ctx.fillStyle = mixColor('#4a5a3a', '#3a4a2a', rp);
-    ctx.fillRect(0, riverY - 2, PIXEL_W, 2);
-    ctx.fillStyle = mixColor('#3a4a2a', '#2a3a1e', rp);
-    ctx.fillRect(0, riverY + riverH, PIXEL_W, 2);
+
+    // drain pipe from the plant to the river bank — drips more as pollution rises
+    ctx.fillStyle = '#7a7a86';
+    ctx.fillRect(112, 133, 84, 3);
+    ctx.fillStyle = '#55555e';
+    ctx.fillRect(112, 133, 84, 1);
+    if (rp > 0.05) {
+        ctx.fillStyle = 'rgba(120,190,60,' + (0.35 + rp * 0.4).toFixed(2) + ')';
+        ctx.fillRect(190, 136, 8, 3);
+        const drips = 1 + Math.round(rp * 3);
+        for (let i = 0; i < drips; i++) {
+            const dx = 194 + i * 4;
+            const dy = 139 + ((frame * 0.9 + i * 6) % 3);
+            ctx.fillStyle = mixColor('#5aa0cc', '#6aaa4a', rp);
+            ctx.fillRect(dx, dy, 2, 2);
+        }
+    }
+
+    // near shore edge
+    ctx.fillStyle = bankDark;
+    ctx.fillRect(0, PIXEL_H - 2, PIXEL_W, 2);
 }
 
 function drawClickHint() {
     const now = performance.now();
     if (now - lastPlaneClick < 5000) return;
-    const cx = Math.floor(planeX + planeW / 2);
     const pulse = Math.round(Math.sin(now * 0.006) * 2);
-    const ay = Math.round(planeY - 16 + pulse);
+    let cx, ay;
+    if (currentMap === 'nuclear') {
+        cx = 100;
+        ay = Math.round(40 + pulse);
+    } else {
+        cx = Math.floor(planeX + planeW / 2);
+        ay = Math.round(planeY - 16 + pulse);
+    }
 
     // label with white outline so it pops against the sky
     ctx.font = '9px monospace';
@@ -1437,8 +1566,14 @@ function drawCombo() {
     const now = performance.now();
     const remaining = comboEndsAt - now;
     if (remaining <= 0) return;
-    const cx = Math.floor(planeX + planeW / 2);
-    const cy = planeY + planeH + 7;
+    let cx, cy;
+    if (currentMap === 'nuclear') {
+        cx = 100;
+        cy = 52;
+    } else {
+        cx = Math.floor(planeX + planeW / 2);
+        cy = planeY + planeH + 7;
+    }
     ctx.font = '9px monospace';
     const text = 'COMBO ×' + combo + ' (' + lastComboMult.toFixed(1) + 'x)';
     const tw = Math.ceil(ctx.measureText(text).width);
@@ -1598,7 +1733,7 @@ function drawScene() {
     // background city + haze (behind everything else)
     drawSkyline();
 
-    // clouds + birds
+    // clouds (sky scenery) — but no birds or flying things on the nuclear world
     if (currentMap === 'earth' || currentMap === 'nuclear') {
         ctx.fillStyle = '#ffffff';
         clouds.forEach(c => {
@@ -1606,8 +1741,8 @@ function drawScene() {
             const cx = ((c.x - scrollX * 0.4) % span + span) % span - 20;
             ctx.fillRect(cx, c.y, c.w, 4);
         });
-        drawBirds();
     }
+    if (currentMap === 'earth') drawBirds();
 
     // ground plane from the horizon down
     if (currentMap === 'mars') {
@@ -1683,21 +1818,24 @@ function drawScene() {
         drawTrees(Math.min(10, Math.floor(totalOwned / 10)));
     }
 
-    // clickable vehicle centered, bobbing (rocket on Mars, plane on Earth,
-    // power plant on the nuclear map, sitting on the river bank)
+    // clickable object (plane on Earth, rocket on Mars). On the nuclear map
+    // the power plant is clickable — it stands still on the left bank while
+    // the river flows toward you on the right.
     planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
     planeY = 46 + Math.round(Math.sin(frame * 0.04) * 4);
     if (currentMap === 'nuclear') {
-        planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
-        planeY = GROUND_Y - 20 + Math.round(Math.sin(frame * 0.04) * 2);
+        planeX = 8;
+        planeY = 8;
         drawNuclearReactor(planeX, planeY, frenzyActive());
     } else if (currentMap === 'mars') drawMarsRocket(planeX, planeY, frenzyActive());
     else drawPlane(planeX, planeY, frenzyActive());
-    drawClickHint();
-    drawCombo();
-    drawBalloon();
-    drawBoostPlane();
-    drawEffects();
+    if (currentMap !== 'nuclear') {
+        drawClickHint();
+        drawCombo();
+        drawBalloon();
+        drawBoostPlane();
+        drawEffects();
+    }
 
     // floating +$ text (crits, balloon payouts, and boosts are bigger + tinted)
     floaters.forEach(f => {
@@ -1728,7 +1866,7 @@ function animate() {
         frenzy.active = false;
         frenzy.nextAt = now + 75000 + Math.random() * 45000;
     }
-    if (!frenzy.active && now >= frenzy.nextAt) {
+    if (!frenzy.active && currentMap !== 'nuclear' && now >= frenzy.nextAt) {
         frenzy.active = true;
         frenzy.endsAt = now + FRENZY_DURATION;
         state.frenziesTriggered++;
@@ -1740,13 +1878,13 @@ function animate() {
         boost.active = false;
         nextBoostAt = now + 180000 + Math.random() * 120000;
     }
-    if (!boostPlane && !boost.active && now >= nextBoostAt) spawnBoostPlane();
+    if (!boostPlane && !boost.active && currentMap !== 'nuclear' && now >= nextBoostAt) spawnBoostPlane();
     if (boostPlane) {
         boostPlane.x -= 0.8;
         if (boostPlane.x < -20) boostPlane = null;
     }
 
-    if (!balloon && now >= nextBalloonAt) spawnBalloon();
+    if (!balloon && currentMap !== 'nuclear' && now >= nextBalloonAt) spawnBalloon();
     if (balloon) {
         balloon.x -= 0.65;
         if (balloon.x < -24) balloon = null;
@@ -1764,6 +1902,7 @@ function animate() {
 
 // ---- click the plane ----
 canvas.addEventListener('click', (e) => {
+    if (currentMap === 'nuclear') return; // the nuclear world is passive — no clicking
     const rect = canvas.getBoundingClientRect();
     const px = (e.clientX - rect.left) * (PIXEL_W / rect.width);
     const py = (e.clientY - rect.top) * (PIXEL_H / rect.height);
@@ -1816,7 +1955,7 @@ document.addEventListener('keydown', (e) => {
         closeShop();
         return;
     }
-    if (e.code === 'Space' && !shopPanel.classList.contains('open')) {
+    if (e.code === 'Space' && !shopPanel.classList.contains('open') && currentMap !== 'nuclear') {
         e.preventDefault();
         // Don't re-trigger a shop button that still has focus
         if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
