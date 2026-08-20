@@ -211,15 +211,21 @@ canvas {
     to { opacity: 1; transform: translateY(0); }
 }
 
-#toolbar { margin-top: 12px; display: flex; gap: 10px; justify-content: center; }
-#mapBtn {
+#toolbar { margin-top: 12px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.map-btn {
     background: #c2571f;
     color: #fff;
     border: none;
     border-radius: 8px;
     font-weight: bold;
 }
-#mapBtn:hover { background: #9c4518; }
+.map-btn:hover:not(.active) { background: #9c4518; }
+.map-btn.active {
+    background: #1f2937;
+    box-shadow: inset 0 0 0 2px #fbbf24;
+    cursor: default;
+}
+.map-btn.locked { opacity: 0.6; }
 #resetBtn {
     background: #dc2626;
     color: #fff;

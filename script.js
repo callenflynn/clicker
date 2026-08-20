@@ -727,13 +727,16 @@ function closeShop() {
     shopBackdrop.classList.remove('open');
 }
 
-// ---- map switching (Earth / Mars) ----
+// ---- map switching (Earth / Mars / Nuclear) ----
 const MARS_COST = 1e7;
 const NUCLEAR_COST = 1e21;
 const NUCLEAR_KEY = 'clih-nuclear-unlocked';
 const MARS_KEY = 'clih-mars-unlocked';
 let currentMap = 'earth';
-const mapBtn = document.getElementById('mapBtn');
+const earthBtn = document.getElementById('earthBtn');
+const marsBtn = document.getElementById('marsBtn');
+const nuclearBtn = document.getElementById('nuclearBtn');
+const mapBtns = { earth: earthBtn, mars: marsBtn, nuclear: nuclearBtn };
 
 function marsUnlocked() {
     return localStorage.getItem(MARS_KEY) === '1';
@@ -741,55 +744,56 @@ function marsUnlocked() {
 function nuclearUnlocked() {
     return localStorage.getItem(NUCLEAR_KEY) === '1';
 }
+const MAP_LABELS = { earth: '🌍 Earth', mars: '🔴 Mars', nuclear: '☢️ Nuclear' };
+const MAP_COSTS = { mars: MARS_COST, nuclear: NUCLEAR_COST };
 
-function updateMapBtn() {
-    const labels = { earth: '🌍 Earth', mars: '🔴 Mars', nuclear: '☢️ Nuclear' };
-    const next = { earth: 'mars', mars: nuclearUnlocked() ? 'nuclear' : 'earth', nuclear: 'earth' };
-    const target = next[currentMap];
-    if (target === 'earth') {
-        mapBtn.textContent = '→ ' + labels.earth;
-    } else if (target === 'mars' && marsUnlocked()) {
-        mapBtn.textContent = '→ ' + labels.mars;
-    } else if (target === 'nuclear' && nuclearUnlocked()) {
-        mapBtn.textContent = '→ ' + labels.nuclear;
-    } else if (target === 'mars') {
-        mapBtn.textContent = '🚀 Mars ($' + fmt(MARS_COST) + ')';
-    } else {
-        mapBtn.textContent = '☢️ Nuclear ($' + fmt(NUCLEAR_COST) + ')';
-    }
+function switchMap(target) {
+    if (target === currentMap) return;
+    currentMap = target;
+    showToast('Switched to ' + MAP_LABELS[target]);
+    invalidateLayers();
+    createShop();
+    update();
 }
-mapBtn.onclick = () => {
-    const nextMap = { earth: 'mars', mars: nuclearUnlocked() ? 'nuclear' : 'earth', nuclear: 'earth' };
-    const target = nextMap[currentMap];
-    if ((target === 'earth') || (target === 'mars' && marsUnlocked()) || (target === 'nuclear' && nuclearUnlocked())) {
-        currentMap = target;
-        const labels = { earth: '🌍 Earth', mars: '🔴 Mars', nuclear: '☢️ Nuclear' };
-        showToast('Switched to ' + labels[target]);
-        invalidateLayers();
-        createShop();
-        update();
-    } else if (target === 'mars' && state.money >= MARS_COST) {
-        state.money -= MARS_COST;
-        localStorage.setItem(MARS_KEY, '1');
-        currentMap = 'mars';
-        showToast('🔴 Mars unlocked!');
-        invalidateLayers();
-        createShop();
-        update();
-    } else if (target === 'nuclear' && state.money >= NUCLEAR_COST) {
-        state.money -= NUCLEAR_COST;
-        localStorage.setItem(NUCLEAR_KEY, '1');
-        currentMap = 'nuclear';
-        showToast('☢️ Nuclear map unlocked!');
-        invalidateLayers();
-        createShop();
-        update();
+function buyMapUnlock(target) {
+    const cost = MAP_COSTS[target];
+    if (state.money < cost) {
+        showToast('Need $' + fmt(cost) + ' to unlock ' + MAP_LABELS[target]);
+        return;
+    }
+    state.money -= cost;
+    localStorage.setItem(target === 'mars' ? MARS_KEY : NUCLEAR_KEY, '1');
+    currentMap = target;
+    showToast(MAP_LABELS[target] + ' unlocked!');
+    invalidateLayers();
+    createShop();
+    update();
+}
+function goToMap(target) {
+    if (target === 'earth') {
+        switchMap('earth');
+    } else if (target === 'mars' && !marsUnlocked()) {
+        buyMapUnlock('mars');
+    } else if (target === 'nuclear' && !nuclearUnlocked()) {
+        buyMapUnlock('nuclear');
     } else {
-        const cost = target === 'mars' ? MARS_COST : NUCLEAR_COST;
-        showToast('Need $' + fmt(cost) + ' to unlock ' + (target === 'mars' ? 'Mars' : 'Nuclear'));
+        switchMap(target);
     }
     updateMapBtn();
-};
+}
+function updateMapBtn() {
+    ['earth', 'mars', 'nuclear'].forEach(m => {
+        const btn = mapBtns[m];
+        const isCurrent = currentMap === m;
+        const locked = m !== 'earth' && !(m === 'mars' ? marsUnlocked() : nuclearUnlocked());
+        btn.textContent = locked ? MAP_LABELS[m] + ' ($' + fmt(MAP_COSTS[m]) + ')' : MAP_LABELS[m];
+        btn.classList.toggle('active', isCurrent);
+        btn.classList.toggle('locked', locked);
+    });
+}
+earthBtn.onclick = () => goToMap('earth');
+marsBtn.onclick = () => goToMap('mars');
+nuclearBtn.onclick = () => goToMap('nuclear');
 updateMapBtn();
 
 let saveMigrated = false;
