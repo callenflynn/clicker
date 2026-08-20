@@ -28,6 +28,16 @@ const buildings = [
     { name: 'Quantum Relay',  baseCost: 8e18,      costMult: 1.15, income: 5e12, map: 'mars' }
 ];
 
+// Nuclear map buildings (third map, unlocked after Mars)
+const nuclearBuildings = [
+    { name: 'Reactor Core',   baseCost: 1e22,  costMult: 1.15, income: 1e13, pollution: 3, map: 'nuclear' },
+    { name: 'Cooling Tower',   baseCost: 1e23,  costMult: 1.15, income: 5e13, pollution: 2, map: 'nuclear' },
+    { name: 'Waste Facility',  baseCost: 1e24,  costMult: 1.15, income: 2.5e14, pollution: 4, map: 'nuclear' },
+    { name: 'Research Lab',    baseCost: 1e25,  costMult: 1.15, income: 1e15, pollution: 1, map: 'nuclear' },
+    { name: 'Containment Pod', baseCost: 1e26,  costMult: 1.15, income: 5e15, pollutionReduction: 2, map: 'nuclear' },
+    { name: 'Fusion Engine',   baseCost: 1e27,  costMult: 1.15, income: 2.5e16, map: 'nuclear' }
+];
+
 const BUILDING_STYLES = [
     { w: 14, h: 16, body: '#8b3a3a', dark: '#5e2323', layer: 0, kind: 'brick' }, // House
     { w: 18, h: 20, body: '#7a4a2a', dark: '#4e2d18', layer: 0, kind: 'brick' }, // Shop
@@ -71,7 +81,7 @@ let state = {
     money: 0,
     clickPower: 1,
     clickLevel: 0,
-    buildings: buildings.map(() => 0),
+    buildings: buildings.concat(nuclearBuildings).map(() => 0),
     totalClicks: 0,
     totalEarned: 0,
     achievements: [],
@@ -576,7 +586,7 @@ function doRebirth() {
     state.money = 0;
     state.clickPower = 1;
     state.clickLevel = 0;
-    state.buildings = buildings.map(() => 0);
+    state.buildings = buildings.concat(nuclearBuildings).map(() => 0);
     invalidateLayers();
     save();
     update();
@@ -712,14 +722,7 @@ function marsUnlocked() {
 function nuclearUnlocked() {
     return localStorage.getItem(NUCLEAR_KEY) === '1';
 }
-const nuclearBuildings = [
-    { name: 'Reactor Core',   baseCost: 1e22,  costMult: 1.15, income: 1e13, pollution: 3, map: 'nuclear' },
-    { name: 'Cooling Tower',   baseCost: 1e23,  costMult: 1.15, income: 5e13, pollution: 2, map: 'nuclear' },
-    { name: 'Waste Facility',  baseCost: 1e24,  costMult: 1.15, income: 2.5e14, pollution: 4, map: 'nuclear' },
-    { name: 'Research Lab',    baseCost: 1e25,  costMult: 1.15, income: 1e15, pollution: 1, map: 'nuclear' },
-    { name: 'Containment Pod', baseCost: 1e26,  costMult: 1.15, income: 5e15, pollutionReduction: 2, map: 'nuclear' },
-    { name: 'Fusion Engine',   baseCost: 1e27,  costMult: 1.15, income: 2.5e16, map: 'nuclear' }
-];
+
 function updateMapBtn() {
     const labels = { earth: '🌍 Earth', mars: '🔴 Mars', nuclear: '☢️ Nuclear' };
     const next = { earth: 'mars', mars: nuclearUnlocked() ? 'nuclear' : 'earth', nuclear: 'earth' };
@@ -1243,35 +1246,9 @@ function drawTrees(count) {
 }
 
 function drawEarthPollution() {
-    const target = currentMap === 'earth' ? earthPollutionLevel() : 0;
-    easedPollution += (target - easedPollution) * 0.04;
+    if (currentMap !== 'earth') return;
     const ep = Math.max(0, Math.min(1, easedPollution));
     if (ep < 0.01) return;
-
-    // --- LAYER 1: Sky gradient — darker brownish-gray near horizon ---
-    const skyTop = mixColor('#9ad0ff', '#6e6558', ep * 0.7);
-    const skyBot = mixColor('#b8d8f8', '#7a6e5a', ep * 0.85);
-    const grad = ctx.createLinearGradient(0, 0, 0, SKYLINE_Y);
-    grad.addColorStop(0, skyTop);
-    grad.addColorStop(1, skyBot);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
-
-    // --- LAYER 2: Dimming sun ---
-    if (ep > 0.05) {
-        const sunX = 50, sunY = 18;
-        const sunAlpha = Math.max(0.08, 0.5 - ep * 0.45);
-        const sunColor = mixColor('#ffe87a', '#d4943a', ep);
-        ctx.fillStyle = sunColor;
-        ctx.globalAlpha = sunAlpha;
-        const r = Math.round(6 - ep * 2);
-        for (let dy = -r; dy <= r; dy++) {
-            for (let dx = -r; dx <= r; dx++) {
-                if (dx * dx + dy * dy <= r * r) ctx.fillRect(sunX + dx, sunY + dy, 1, 1);
-            }
-        }
-        ctx.globalAlpha = 1;
-    }
 
     // --- LAYER 3: Far smog clouds (small, high, slow drift) ---
     const farCount = Math.round(ep * 4);
@@ -1523,15 +1500,43 @@ function drawTowerBeacons() {
 }
 
 function drawScene() {
+    // ease pollution toward its target so the visuals shift smoothly
+    const pollTarget = currentMap === 'earth' ? earthPollutionLevel() : 0;
+    easedPollution += (pollTarget - easedPollution) * 0.04;
+    if (Math.abs(pollTarget - easedPollution) < 0.001) easedPollution = pollTarget;
+    const ep = Math.max(0, Math.min(1, easedPollution));
     // sky — shifts from blue to dirty brown-gray with pollution
     if (currentMap === 'mars') {
         ctx.fillStyle = '#c98a5b';
+        ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
     } else if (currentMap === 'nuclear') {
-        ctx.fillStyle = mixColor('#7a8a7a', '#4a5a4a', Math.min(1, easedPollution * 0.8));
+        ctx.fillStyle = mixColor('#7a8a7a', '#4a5a4a', ep * 0.8);
+        ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
     } else {
-        ctx.fillStyle = mixColor('#9ad0ff', '#7a7262', Math.min(1, easedPollution * 0.6));
+        const skyTop = mixColor('#9ad0ff', '#6e6558', ep * 0.7);
+        const skyBot = mixColor('#b8d8f8', '#7a6e5a', ep * 0.85);
+        const grad = ctx.createLinearGradient(0, 0, 0, SKYLINE_Y);
+        grad.addColorStop(0, skyTop);
+        grad.addColorStop(1, skyBot);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
+
+        // dimming sun, drawn behind the skyline and clouds
+        if (ep > 0.05) {
+            const sunX = 50, sunY = 18;
+            const sunAlpha = Math.max(0.08, 0.5 - ep * 0.45);
+            const sunColor = mixColor('#ffe87a', '#d4943a', ep);
+            ctx.fillStyle = sunColor;
+            ctx.globalAlpha = sunAlpha;
+            const r = Math.round(6 - ep * 2);
+            for (let dy = -r; dy <= r; dy++) {
+                for (let dx = -r; dx <= r; dx++) {
+                    if (dx * dx + dy * dy <= r * r) ctx.fillRect(sunX + dx, sunY + dy, 1, 1);
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
     }
-    ctx.fillRect(0, 0, PIXEL_W, SKYLINE_Y);
 
     // background city + haze (behind everything else)
     drawSkyline();
@@ -1606,9 +1611,9 @@ function drawScene() {
     } else if (currentMap === 'nuclear') {
         drawNuclearScene();
     } else {
-        ctx.fillStyle = '#2c6e34';
+        ctx.fillStyle = mixColor('#2c6e34', '#8a7a2a', ep);
         ctx.fillRect(0, PIXEL_H - 12, PIXEL_W, 12);
-        ctx.fillStyle = '#1f5227';
+        ctx.fillStyle = mixColor('#1f5227', '#6b5c1e', ep);
         for (let i = 0; i < 12; i++) {
             const gx = ((i * 33 - scrollX * 1.6) % PIXEL_W + PIXEL_W) % PIXEL_W;
             ctx.fillRect(gx, PIXEL_H - 8, 3, 8);
