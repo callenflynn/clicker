@@ -28,15 +28,7 @@ const buildings = [
     { name: 'Quantum Relay',  baseCost: 8e18,      costMult: 1.15, income: 5e12, map: 'mars' }
 ];
 
-// Nuclear map buildings (third map, unlocked after Mars)
-const nuclearBuildings = [
-    { name: 'Reactor Core',   baseCost: 1e22,  costMult: 1.15, income: 1e13, pollution: 3, map: 'nuclear' },
-    { name: 'Cooling Tower',   baseCost: 1e23,  costMult: 1.15, income: 5e13, pollution: 2, map: 'nuclear' },
-    { name: 'Waste Facility',  baseCost: 1e24,  costMult: 1.15, income: 2.5e14, pollution: 4, map: 'nuclear' },
-    { name: 'Research Lab',    baseCost: 1e25,  costMult: 1.15, income: 1e15, pollution: 1, map: 'nuclear' },
-    { name: 'Containment Pod', baseCost: 1e26,  costMult: 1.15, income: 5e15, pollutionReduction: 2, map: 'nuclear' },
-    { name: 'Fusion Engine',   baseCost: 1e27,  costMult: 1.15, income: 2.5e16, map: 'nuclear' }
-];
+
 
 const BUILDING_STYLES = [
     { w: 14, h: 16, body: '#8b3a3a', dark: '#5e2323', layer: 0, kind: 'brick' }, // House
@@ -59,14 +51,7 @@ const BUILDING_STYLES = [
     { w: 30, h: 24, body: '#4f9d69', dark: '#285a3a', layer: 1, kind: 'recycler' }, // Recycling Plant
     { w: 36, h: 32, body: '#5b8fa8', dark: '#2f5668', layer: 2, kind: 'hydro' }, // Hydro Dam
     { w: 34, h: 30, body: '#6bbf78', dark: '#31734a', layer: 1, kind: 'terraform' }, // Terraforming Lab
-    { w: 34, h: 38, body: '#b88cff', dark: '#5f3e9c', layer: 2, kind: 'quantum' }, // Quantum Relay
-    // Nuclear buildings
-    { w: 24, h: 36, body: '#8a8a8a', dark: '#5a5a5a', layer: 2, kind: 'reactor' },  // Reactor Core
-    { w: 20, h: 40, body: '#a0a0a0', dark: '#707070', layer: 2, kind: 'cooling' },   // Cooling Tower
-    { w: 26, h: 22, body: '#6a7a3a', dark: '#4a5a2a', layer: 1, kind: 'waste' },    // Waste Facility
-    { w: 22, h: 28, body: '#4a7a8a', dark: '#2a5a6a', layer: 1, kind: 'lab' },      // Research Lab
-    { w: 28, h: 30, body: '#7a7a6a', dark: '#5a5a4a', layer: 2, kind: 'contain' },  // Containment Pod
-    { w: 30, h: 34, body: '#3a8a5a', dark: '#1a6a3a', layer: 2, kind: 'fusion' }    // Fusion Engine
+    { w: 34, h: 38, body: '#b88cff', dark: '#5f3e9c', layer: 2, kind: 'quantum' } // Quantum Relay
 ];
 
 // Depth bands drawn back-to-front. Taller buildings live further back,
@@ -81,7 +66,8 @@ let state = {
     money: 0,
     clickPower: 1,
     clickLevel: 0,
-    buildings: buildings.concat(nuclearBuildings).map(() => 0),
+    buildings: buildings.map(() => 0),
+    plantLevel: 0,
     totalClicks: 0,
     totalEarned: 0,
     achievements: [],
@@ -140,9 +126,9 @@ const ACHIEVEMENTS = [
     { id: 'hydro_1', name: 'Water Works', desc: 'Own a Hydro Dam', check: s => s.buildings[18] >= 1 },
     { id: 'terraform_1', name: 'Green Mars', desc: 'Own a Terraforming Lab', check: s => s.buildings[19] >= 1 },
     { id: 'quantum_1', name: 'Quantum Leap', desc: 'Own a Quantum Relay', check: s => s.buildings[20] >= 1 },
-    { id: 'reactor_1', name: 'Critical Mass', desc: 'Own a Reactor Core', check: s => s.buildings[21] >= 1 },
-    { id: 'reactor_10', name: 'Nuclear Winter', desc: 'Own 10 Reactor Cores', check: s => s.buildings[21] >= 10 },
-    { id: 'fusion_1', name: 'Fusion Master', desc: 'Own a Fusion Engine', check: s => s.buildings[26] >= 1 }
+    { id: 'plant_1', name: 'Critical Mass', desc: 'Upgrade the nuclear plant to level 1', check: s => s.plantLevel >= 1 },
+    { id: 'plant_10', name: 'Nuclear Winter', desc: 'Upgrade the nuclear plant to level 10', check: s => s.plantLevel >= 10 },
+    { id: 'plant_25', name: 'Fusion Master', desc: 'Upgrade the nuclear plant to level 25', check: s => s.plantLevel >= 25 }
 ];
 
 const moneyEl = document.getElementById('money');
@@ -164,6 +150,7 @@ const ctx = canvas.getContext('2d');
 const clickSoundEl = document.getElementById('clickSound');
 
 let cpBtn = null;
+let plantBtn = null;
 let buildingBtns = [];
 let buyAmount = 1;
 
@@ -207,14 +194,13 @@ const SKYLINE_SPAN = 16 * 24;
 
 // ---- helpers ----
 function buildingCostAt(i, owned) {
-    const allBuildings = buildings.concat(nuclearBuildings);
-    return Math.floor(allBuildings[i].baseCost * Math.pow(allBuildings[i].costMult, owned));
+    return Math.floor(buildings[i].baseCost * Math.pow(buildings[i].costMult, owned));
 }
 function buildingCost(i) {
     return buildingCostAt(i, state.buildings[i]);
 }
 function bulkCost(i, n) {
-    const c = buildings.concat(nuclearBuildings)[i];
+    const c = buildings[i];
     return Math.floor(c.baseCost * Math.pow(c.costMult, state.buildings[i]) * (Math.pow(c.costMult, n) - 1) / (c.costMult - 1));
 }
 function maxAffordable(i) {
@@ -295,14 +281,12 @@ function nextMilestone(i) {
 }
 // Each building tier belongs to Earth (city tiers) or Mars (space tiers).
 function buildingMap(i) {
-    if (i < buildings.length) return buildings[i].map || (i >= 10 ? 'mars' : 'earth');
-    const ni = i - buildings.length;
-    return nuclearBuildings[ni] ? nuclearBuildings[ni].map : 'earth';
+    return buildings[i].map || (i >= 10 ? 'mars' : 'earth');
 }
 function incomePerSec() {
-    const all = buildings.concat(nuclearBuildings);
-    const base = all.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0);
-    return base * incomeMult() * boostMult() * (1 - pollutionPenalty());
+    const base = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0);
+    const plant = currentMap === 'nuclear' ? plantIncome() : 0;
+    return (base + plant) * incomeMult() * boostMult() * (1 - pollutionPenalty());
 }
 function incomeMult() {
     return (1 + 0.05 * state.achievements.length) * (1 + 0.25 * state.rebirths);
@@ -316,6 +300,23 @@ function boostMult() {
 function frenzyActive() {
     return frenzy.active && performance.now() < frenzy.endsAt;
 }
+// ---- Nuclear power plant ----
+// One plant on the nuclear map: you upgrade it instead of buying buildings.
+function plantUpgradeCost(level) {
+    return Math.floor(1e22 * Math.pow(3, level));
+}
+function plantIncome() {
+    if (state.plantLevel <= 0) return 0;
+    return 2e13 * Math.pow(2.5, state.plantLevel);
+}
+function buyPlantUpgrade() {
+    const cost = plantUpgradeCost(state.plantLevel);
+    if (state.money < cost) return;
+    state.money -= cost;
+    state.plantLevel++;
+    update();
+    showToast('⚛️ Plant upgraded to level ' + state.plantLevel);
+}
 // Pollution is based on total Earth building count, scaled by rebirths.
 // More buildings = more smog. More rebirths = industry intensifies.
 function earthPollution() {
@@ -328,11 +329,12 @@ function earthPollution() {
 function earthPollutionLevel() {
     return earthPollution();
 }
-// River pollution on nuclear map: based on nuclear building count
+// River pollution on the nuclear map: the river turns greener as the plant
+// is upgraded.
 function nuclearRiverPollution() {
-    const total = buildings.concat(nuclearBuildings).reduce((sum, b, i) => sum + (buildingMap(i) === 'nuclear' ? state.buildings[i] : 0), 0);
-    if (total <= 0) return 0;
-    return Math.min(1, Math.log10(total + 1) / 3);
+    const lvl = state.plantLevel;
+    if (lvl <= 0) return 0;
+    return Math.min(1, Math.log10(lvl + 1) / 2);
 }
 // For backward compat: pollution() now returns earth pollution as a raw score
 function pollution() {
@@ -388,7 +390,7 @@ let metaSig = '';
 // Persistent building slots so buying one type never reflows (and visually
 // deletes) buildings of another type. These are synced lazily when counts change.
 let placementSlots = { earth: [[], [], []], mars: [[], [], []], nuclear: [[], [], []] };
-let placementCounts = buildings.concat(nuclearBuildings).map(() => 0);
+let placementCounts = buildings.map(() => 0);
 
 function invalidateLayers() { layersDirty = true; tilesDirty = true; }
 
@@ -401,19 +403,19 @@ function getBuildingLayers() {
 
 function syncPlacements() {
     let changed = false;
-    for (let tier = 0; tier < buildings.length + nuclearBuildings.length; tier++) {
+    for (let tier = 0; tier < buildings.length; tier++) {
         if (state.buildings[tier] !== placementCounts[tier]) { changed = true; break; }
     }
     if (!changed) return;
 
     // Decreases (reset/import) rebuild from scratch.
-    const totalTiers = buildings.length + nuclearBuildings.length;
+    const totalTiers = buildings.length;
     const anyDecrease = Array.from({length: totalTiers}, (_, t) => t).some(t => state.buildings[t] < placementCounts[t]);
     if (anyDecrease) { buildPlacementsFromScratch(); return; }
 
     // Only increases: append new buildings at the end of their layer so
     // existing buildings keep their exact slot and never shift away.
-    buildings.concat(nuclearBuildings).forEach((b, tier) => {
+    buildings.forEach((b, tier) => {
         const prev = placementCounts[tier];
         const current = state.buildings[tier];
         if (current <= prev) return;
@@ -435,7 +437,7 @@ function syncPlacements() {
 function buildPlacementsFromScratch() {
     placementSlots = { earth: [[], [], []], mars: [[], [], []], nuclear: [[], [], []] };
     const cursors = { earth: [0, 0, 0], mars: [0, 0, 0], nuclear: [0, 0, 0] };
-    buildings.concat(nuclearBuildings).forEach((b, tier) => {
+    buildings.forEach((b, tier) => {
         const s = BUILDING_STYLES[tier];
         const map = buildingMap(tier);
         for (let i = 0; i < state.buildings[tier]; i++) {
@@ -586,7 +588,8 @@ function doRebirth() {
     state.money = 0;
     state.clickPower = 1;
     state.clickLevel = 0;
-    state.buildings = buildings.concat(nuclearBuildings).map(() => 0);
+    state.buildings = buildings.map(() => 0);
+    state.plantLevel = 0;
     invalidateLayers();
     save();
     update();
@@ -656,7 +659,23 @@ function createShop() {
     cpDiv.appendChild(cpBtn);
     shopItemsEl.appendChild(cpDiv);
 
-    const allBuildings = buildings.concat(nuclearBuildings);
+    // Nuclear map: a single power plant you upgrade (no building purchases)
+    if (currentMap === 'nuclear') {
+        const pDiv = document.createElement('div');
+        pDiv.className = 'item';
+        plantBtn = document.createElement('button');
+        plantBtn.onclick = buyPlantUpgrade;
+        pDiv.appendChild(plantBtn);
+        const pSub = document.createElement('div');
+        pSub.className = 'item-sub';
+        pSub.id = 'plantSub';
+        pDiv.appendChild(pSub);
+        shopItemsEl.appendChild(pDiv);
+    } else {
+        plantBtn = null;
+    }
+
+    const allBuildings = buildings;
     buildingBtns = allBuildings.map((b, i) => {
         if (buildingMap(i) !== currentMap) return null;
         const div = document.createElement('div');
@@ -803,14 +822,22 @@ function update() {
     cpBtn.textContent = 'Click Power (lvl ' + state.clickLevel + ') - $' + fmt(cpInfo.cost) + (cpInfo.n > 1 ? ' (×' + cpInfo.n + ')' : '');
     cpBtn.disabled = cpInfo.n === 0;
 
-    buildings.concat(nuclearBuildings).forEach((b, i) => {
+    if (plantBtn) {
+        const cost = plantUpgradeCost(state.plantLevel);
+        plantBtn.textContent = '⚛️ Upgrade Plant (lvl ' + state.plantLevel + ') - $' + fmt(cost);
+        plantBtn.disabled = state.money < cost;
+        const pSub = document.getElementById('plantSub');
+        if (pSub) pSub.textContent = 'produces $' + fmt(plantIncome()) + '/sec · river pollution ' + Math.round(nuclearRiverPollution() * 100) + '%';
+    }
+
+    buildings.forEach((b, i) => {
         if (!buildingBtns[i]) return;
         const { n, cost } = buildingBuyInfo(i);
         buildingBtns[i].textContent = b.name + ' (' + state.buildings[i] + ') - $' + fmt(cost) + (n > 1 ? ' (×' + n + ')' : '');
         buildingBtns[i].disabled = n === 0;
     });
 
-    buildings.concat(nuclearBuildings).forEach((b, i) => {
+    buildings.forEach((b, i) => {
         const sub = document.getElementById('bsub' + i);
         if (!sub) return;
         const mult = buildingMult(i);
@@ -1282,30 +1309,43 @@ function drawEarthPollution() {
 }
 
 function drawNuclearReactor(x, y, gold) {
+    const lvl = state.plantLevel;
+    const glow = Math.min(1, lvl / 10);
     const body = gold ? '#ffe08a' : '#d0d0d8';
     const dark = gold ? '#c8a030' : '#808090';
-    // base platform
+    // base platform on the river bank
     ctx.fillStyle = '#606068';
-    ctx.fillRect(x - 2, y + planeH + 2, planeW + 4, 3);
+    ctx.fillRect(x - 3, y + planeH + 2, planeW + 6, 3);
     // reactor dome
     ctx.fillStyle = body;
     ctx.fillRect(x + 2, y + 2, 14, 8);
     ctx.fillRect(x + 4, y, 10, 2);
-    // control rod / core glow
-    ctx.fillStyle = '#44ff88';
+    // control rod / core glow — brighter with upgrades
+    ctx.fillStyle = mixColor('#44ff88', '#ccff44', glow);
     ctx.fillRect(x + 7, y + 4, 4, 3);
-    // chimney stacks
+    if (lvl >= 3) {
+        ctx.fillStyle = 'rgba(140,255,140,0.6)';
+        ctx.fillRect(x + 6, y + 3, 6, 3);
+    }
+    // cooling stacks — more of them as the plant grows
     ctx.fillStyle = dark;
     ctx.fillRect(x + 1, y - 6, 3, 8);
     ctx.fillRect(x + 15, y - 4, 3, 6);
-    // smoke puffs (animated)
+    if (lvl >= 5) {
+        ctx.fillRect(x + 4, y - 8, 2, 10);
+        ctx.fillRect(x + 13, y - 7, 2, 9);
+    }
+    if (lvl >= 10) {
+        ctx.fillRect(x - 1, y - 10, 2, 12);
+        ctx.fillRect(x + 17, y - 9, 2, 11);
+    }
+    // smoke puffs — more at higher levels
     ctx.fillStyle = 'rgba(180,180,180,0.5)';
+    const puffs = lvl >= 5 ? 3 : 2;
     if (frame % 20 < 10) {
-        ctx.fillRect(x, y - 10, 4, 3);
-        ctx.fillRect(x + 14, y - 8, 5, 3);
+        for (let i = 0; i < puffs; i++) ctx.fillRect(x + i * 8 - 2, y - 12 + i * 2, 4, 3);
     } else {
-        ctx.fillRect(x - 1, y - 12, 5, 3);
-        ctx.fillRect(x + 13, y - 10, 6, 3);
+        for (let i = 0; i < puffs; i++) ctx.fillRect(x + i * 8 - 1, y - 14 + i * 2, 5, 3);
     }
     // radiation warning symbol
     ctx.fillStyle = '#ffaa00';
@@ -1321,27 +1361,41 @@ function drawNuclearScene() {
     const rp = nuclearRiverPollution();
     const riverY = PIXEL_H - 20;
     const riverH = 12;
-    // water base — shifts from blue to toxic green
+    // water base — shifts from blue to toxic green as you upgrade the plant
     ctx.fillStyle = mixColor('#3a7aaa', '#4a8a3a', rp);
     ctx.fillRect(0, riverY, PIXEL_W, riverH);
+    // murky layer at higher pollution
+    if (rp > 0.35) {
+        ctx.fillStyle = 'rgba(30, 60, 25, ' + ((rp - 0.35) * 0.65).toFixed(2) + ')';
+        ctx.fillRect(0, riverY, PIXEL_W, riverH);
+    }
     // shimmer
     ctx.fillStyle = mixColor('#5aa0cc', '#6aaa4a', rp);
     for (let i = 0; i < 8; i++) {
         const sx = ((i * 42 + 5 - scrollX * 0.3) % PIXEL_W + PIXEL_W) % PIXEL_W;
         ctx.fillRect(sx, riverY + 3 + (i % 3) * 2, 10 + (i % 2) * 4, 1);
     }
-    // toxic foam at high pollution
-    if (rp > 0.3) {
-        ctx.fillStyle = 'rgba(120, 180, 60, ' + ((rp - 0.3) * 0.5).toFixed(2) + ')';
-        for (let i = 0; i < 6; i++) {
+    // toxic foam — more of it the greener the river gets
+    if (rp > 0.15) {
+        ctx.fillStyle = 'rgba(120, 190, 60, ' + Math.min(0.6, (rp - 0.15) * 0.7).toFixed(2) + ')';
+        const foam = Math.round(3 + rp * 9);
+        for (let i = 0; i < foam; i++) {
             const fx = ((i * 53 + 11 - scrollX * 0.4) % PIXEL_W + PIXEL_W) % PIXEL_W;
             ctx.fillRect(fx, riverY + 2 + (i % 4) * 2, 6 + (i % 3) * 2, 2);
         }
     }
-    // river banks
-    ctx.fillStyle = '#4a5a3a';
+    // radiation glint at high pollution
+    if (rp > 0.6) {
+        ctx.fillStyle = 'rgba(140, 255, 120, ' + ((rp - 0.6) * 0.55).toFixed(2) + ')';
+        for (let i = 0; i < 4; i++) {
+            const gx = ((i * 71 + 5 - scrollX * 0.35) % PIXEL_W + PIXEL_W) % PIXEL_W;
+            ctx.fillRect(gx, riverY + 3 + (i % 2) * 5, 2, 2);
+        }
+    }
+    // river banks — browner and sicker with pollution
+    ctx.fillStyle = mixColor('#4a5a3a', '#3a4a2a', rp);
     ctx.fillRect(0, riverY - 2, PIXEL_W, 2);
-    ctx.fillStyle = '#3a4a2a';
+    ctx.fillStyle = mixColor('#3a4a2a', '#2a3a1e', rp);
     ctx.fillRect(0, riverY + riverH, PIXEL_W, 2);
 }
 
@@ -1619,16 +1673,20 @@ function drawScene() {
     }
 
     // trees: the bigger your city, the more greenery fills the foreground
-    if (currentMap === 'earth' || currentMap === 'nuclear') {
+    if (currentMap === 'earth') {
         const totalOwned = state.buildings.reduce((a, b) => a + b, 0);
         drawTrees(Math.min(10, Math.floor(totalOwned / 10)));
     }
 
-    // clickable ship centered, bobbing (rocket on Mars, plane on Earth)
+    // clickable vehicle centered, bobbing (rocket on Mars, plane on Earth,
+    // power plant on the nuclear map, sitting on the river bank)
     planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
     planeY = 46 + Math.round(Math.sin(frame * 0.04) * 4);
-    if (currentMap === 'mars') drawMarsRocket(planeX, planeY, frenzyActive());
-    else if (currentMap === 'nuclear') drawNuclearReactor(planeX, planeY, frenzyActive());
+    if (currentMap === 'nuclear') {
+        planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
+        planeY = GROUND_Y - 20 + Math.round(Math.sin(frame * 0.04) * 2);
+        drawNuclearReactor(planeX, planeY, frenzyActive());
+    } else if (currentMap === 'mars') drawMarsRocket(planeX, planeY, frenzyActive());
     else drawPlane(planeX, planeY, frenzyActive());
     drawClickHint();
     drawCombo();
@@ -1763,7 +1821,7 @@ document.addEventListener('keydown', (e) => {
 
 document.getElementById('resetBtn').onclick = () => {
     if (!confirm('Reset all progress? This cannot be undone.')) return;
-    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.concat(nuclearBuildings).map(() => 0), totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
+    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), plantLevel: 0, totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
     combo = 0;
     comboEndsAt = 0;
     frenzy.active = false;
@@ -1784,8 +1842,9 @@ function loadFrom(data) {
     state.clickPower = data.clickPower ?? 1;
     state.clickLevel = data.clickLevel ?? 0;
     state.buildings = data.buildings ?? buildings.map(() => 0);
-    while (state.buildings.length < buildings.length + nuclearBuildings.length) state.buildings.push(0);
-    state.buildings.length = buildings.length + nuclearBuildings.length;
+    while (state.buildings.length < buildings.length) state.buildings.push(0);
+    state.buildings.length = buildings.length;
+    state.plantLevel = data.plantLevel ?? 0;
     state.totalClicks = data.totalClicks ?? 0;
     state.totalEarned = data.totalEarned ?? 0;
     state.achievements = Array.isArray(data.achievements) ? data.achievements : [];
