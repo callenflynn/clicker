@@ -784,6 +784,7 @@ function goToMap(target) {
 function updateMapBtn() {
     ['earth', 'mars', 'nuclear'].forEach(m => {
         const btn = mapBtns[m];
+        if (!btn) return;
         const isCurrent = currentMap === m;
         const locked = m !== 'earth' && !(m === 'mars' ? marsUnlocked() : nuclearUnlocked());
         btn.textContent = locked ? MAP_LABELS[m] + ' ($' + fmt(MAP_COSTS[m]) + ')' : MAP_LABELS[m];
@@ -791,9 +792,9 @@ function updateMapBtn() {
         btn.classList.toggle('locked', locked);
     });
 }
-earthBtn.onclick = () => goToMap('earth');
-marsBtn.onclick = () => goToMap('mars');
-nuclearBtn.onclick = () => goToMap('nuclear');
+if (earthBtn) earthBtn.onclick = () => goToMap('earth');
+if (marsBtn) marsBtn.onclick = () => goToMap('mars');
+if (nuclearBtn) nuclearBtn.onclick = () => goToMap('nuclear');
 updateMapBtn();
 
 let saveMigrated = false;
