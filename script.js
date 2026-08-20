@@ -810,14 +810,12 @@ function update() {
         buildingBtns[i].disabled = n === 0;
     });
 
-    buildings.forEach((b, i) => {
+    buildings.concat(nuclearBuildings).forEach((b, i) => {
         const sub = document.getElementById('bsub' + i);
         if (!sub) return;
         const mult = buildingMult(i);
         const nm = nextMilestone(i);
         let text = (mult > 1 ? '×' + mult + ' income' : '') + (nm ? (mult > 1 ? ' · ' : '') + '×2 at ' + nm + ' owned' : '');
-        if (b.pollution) text += (text ? ' · ' : '') + '⚠️ -' + (b.pollution * 0.5) + '% income each';
-        if (b.pollutionReduction) text += (text ? ' · ' : '') + '♻️ -' + b.pollutionReduction + ' pollution';
         sub.textContent = text;
     });
 
