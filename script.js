@@ -655,12 +655,16 @@ function importSave() {
 // ---- shop UI (rebuilt when the map changes) ----
 function createShop() {
     shopItemsEl.innerHTML = '';
-    const cpDiv = document.createElement('div');
-    cpDiv.className = 'item';
-    cpBtn = document.createElement('button');
-    cpBtn.onclick = buyClickPower;
-    cpDiv.appendChild(cpBtn);
-    shopItemsEl.appendChild(cpDiv);
+    // The nuclear map is fully passive — no Click Power there, just the plant upgrade
+    cpBtn = null;
+    if (currentMap !== 'nuclear') {
+        const cpDiv = document.createElement('div');
+        cpDiv.className = 'item';
+        cpBtn = document.createElement('button');
+        cpBtn.onclick = buyClickPower;
+        cpDiv.appendChild(cpBtn);
+        shopItemsEl.appendChild(cpDiv);
+    }
 
     // Nuclear map: a single power plant you upgrade (no building purchases)
     if (currentMap === 'nuclear') {
@@ -828,10 +832,13 @@ function update() {
     hintEl.textContent = currentMap === 'nuclear'
         ? 'The nuclear world is passive — upgrade the plant and watch the river turn green.'
         : 'Click the plane to earn money. Buy buildings to grow your city.';
+    canvas.style.cursor = currentMap === 'nuclear' ? 'default' : 'pointer';
 
-    const cpInfo = clickPowerBuyInfo();
-    cpBtn.textContent = 'Click Power (lvl ' + state.clickLevel + ') - $' + fmt(cpInfo.cost) + (cpInfo.n > 1 ? ' (×' + cpInfo.n + ')' : '');
-    cpBtn.disabled = cpInfo.n === 0;
+    if (cpBtn) {
+        const cpInfo = clickPowerBuyInfo();
+        cpBtn.textContent = 'Click Power (lvl ' + state.clickLevel + ') - $' + fmt(cpInfo.cost) + (cpInfo.n > 1 ? ' (×' + cpInfo.n + ')' : '');
+        cpBtn.disabled = cpInfo.n === 0;
+    }
 
     if (plantBtn) {
         const cost = plantUpgradeCost(state.plantLevel);
@@ -1733,8 +1740,8 @@ function drawScene() {
     // background city + haze (behind everything else)
     drawSkyline();
 
-    // clouds (sky scenery) — but no birds or flying things on the nuclear world
-    if (currentMap === 'earth' || currentMap === 'nuclear') {
+    // clouds (sky scenery) — nothing at all flies on the nuclear world
+    if (currentMap === 'earth') {
         ctx.fillStyle = '#ffffff';
         clouds.forEach(c => {
             const span = PIXEL_W + 40;
@@ -1819,7 +1826,7 @@ function drawScene() {
     }
 
     // clickable object (plane on Earth, rocket on Mars). On the nuclear map
-    // the power plant is clickable — it stands still on the left bank while
+    // there is no clicking at all — it stands still on the left bank while
     // the river flows toward you on the right.
     planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
     planeY = 46 + Math.round(Math.sin(frame * 0.04) * 4);
@@ -1889,7 +1896,7 @@ function animate() {
         balloon.x -= 0.65;
         if (balloon.x < -24) balloon = null;
     }
-    if (!birds.length && now >= nextBirdsAt) spawnBirds();
+    if (currentMap === 'earth' && !birds.length && now >= nextBirdsAt) spawnBirds();
     birds.forEach(b => { b.x += b.speed; });
     birds = birds.filter(b => b.x < PIXEL_W + 12);
 
