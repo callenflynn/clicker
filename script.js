@@ -2022,7 +2022,12 @@ function applyOfflineEarnings() {
     const elapsed = Math.floor((Date.now() - state.lastSaved) / 1000);
     if (elapsed < 60) return;
     const capped = Math.min(elapsed, 8 * 3600);
-    const earned = incomePerSec() * capped * 0.5;
+    // The nuclear plant keeps producing while you're away — that's the whole
+    // point of it — even if you didn't leave the game on the nuclear world.
+    const plantOffline = currentMap !== 'nuclear' && state.plantLevel > 0
+        ? plantIncome() * incomeMult() * boostMult() * (1 - pollutionPenalty())
+        : 0;
+    const earned = (incomePerSec() + plantOffline) * capped * 0.5;
     if (earned < 1) return;
     state.money += earned;
     state.totalEarned += earned;
