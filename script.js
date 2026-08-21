@@ -356,36 +356,39 @@ function plantIncome() {
     return 2e13 * Math.pow(2.5, state.plantLevel) * (1 + 0.5 * state.fuelLevel);
 }
 function buyPlantUpgrade() {
-    const cost = plantUpgradeCost(state.plantLevel);
-    if (state.money < cost) return;
-    state.money -= cost;
-    state.plantLevel++;
-    update();
-    showToast('⚛️ Plant upgraded to level ' + state.plantLevel);
+    const { n, cost } = upgradeBuyInfo(plantUpgradeCost, state.plantLevel);
+    if (n > 0 && state.money >= cost) {
+        state.money -= cost;
+        state.plantLevel += n;
+        update();
+        showToast('⚛️ Plant upgraded to level ' + state.plantLevel + (n > 1 ? ' (×' + n + ')' : ''));
+    }
 }
 // Fuel rods: +50% plant output per level.
 function fuelUpgradeCost(level) {
     return Math.floor(5e21 * Math.pow(3.1, level));
 }
 function buyFuelUpgrade() {
-    const cost = fuelUpgradeCost(state.fuelLevel);
-    if (state.money < cost) return;
-    state.money -= cost;
-    state.fuelLevel++;
-    update();
-    showToast('⚛️ Fuel rods enriched to level ' + state.fuelLevel);
+    const { n, cost } = upgradeBuyInfo(fuelUpgradeCost, state.fuelLevel);
+    if (n > 0 && state.money >= cost) {
+        state.money -= cost;
+        state.fuelLevel += n;
+        update();
+        showToast('⚛️ Fuel rods enriched to level ' + state.fuelLevel + (n > 1 ? ' (×' + n + ')' : ''));
+    }
 }
 // Cooling towers: scrub river pollution, which saps the plant's efficiency.
 function coolingUpgradeCost(level) {
     return Math.floor(1.5e22 * Math.pow(3, level));
 }
 function buyCoolingUpgrade() {
-    const cost = coolingUpgradeCost(state.coolingLevel);
-    if (state.money < cost) return;
-    state.money -= cost;
-    state.coolingLevel++;
-    update();
-    showToast('🌊 Cooling towers built to level ' + state.coolingLevel);
+    const { n, cost } = upgradeBuyInfo(coolingUpgradeCost, state.coolingLevel);
+    if (n > 0 && state.money >= cost) {
+        state.money -= cost;
+        state.coolingLevel += n;
+        update();
+        showToast('🌊 Cooling towers built to level ' + state.coolingLevel + (n > 1 ? ' (×' + n + ')' : ''));
+    }
 }
 // Steam turbines: a second generator driven by the plant's waste heat.
 function turbineUpgradeCost(level) {
@@ -396,12 +399,13 @@ function turbineIncome() {
     return 1e13 * Math.pow(2.3, state.turbineLevel);
 }
 function buyTurbineUpgrade() {
-    const cost = turbineUpgradeCost(state.turbineLevel);
-    if (state.money < cost) return;
-    state.money -= cost;
-    state.turbineLevel++;
-    update();
-    showToast('⚙️ Steam turbines spun up to level ' + state.turbineLevel);
+    const { n, cost } = upgradeBuyInfo(turbineUpgradeCost, state.turbineLevel);
+    if (n > 0 && state.money >= cost) {
+        state.money -= cost;
+        state.turbineLevel += n;
+        update();
+        showToast('⚙️ Steam turbines spun up to level ' + state.turbineLevel + (n > 1 ? ' (×' + n + ')' : ''));
+    }
 }
 // ---- Space station: laser + command module ----
 // The space laser is the station's own generator — you level it up just like
@@ -414,12 +418,13 @@ function laserIncome() {
     return 1e16 * Math.pow(3, state.laserLevel);
 }
 function buyLaserUpgrade() {
-    const cost = laserUpgradeCost(state.laserLevel);
-    if (state.money < cost) return;
-    state.money -= cost;
-    state.laserLevel++;
-    update();
-    showToast('🔦 Space Laser upgraded to level ' + state.laserLevel);
+    const { n, cost } = upgradeBuyInfo(laserUpgradeCost, state.laserLevel);
+    if (n > 0 && state.money >= cost) {
+        state.money -= cost;
+        state.laserLevel += n;
+        update();
+        showToast('🔦 Space Laser upgraded to level ' + state.laserLevel + (n > 1 ? ' (×' + n + ')' : ''));
+    }
 }
 function commandUpgradeCost(level) {
     return Math.floor(1e25 * Math.pow(4, level));
@@ -428,12 +433,49 @@ function commandMult() {
     return 1 + 0.25 * state.commandLevel;
 }
 function buyCommandUpgrade() {
-    const cost = commandUpgradeCost(state.commandLevel);
-    if (state.money < cost) return;
-    state.money -= cost;
-    state.commandLevel++;
-    update();
-    showToast('🛰️ Command module upgraded to level ' + state.commandLevel);
+    const { n, cost } = upgradeBuyInfo(commandUpgradeCost, state.commandLevel);
+    if (n > 0 && state.money >= cost) {
+        state.money -= cost;
+        state.commandLevel += n;
+        update();
+        showToast('🛰️ Command module upgraded to level ' + state.commandLevel + (n > 1 ? ' (×' + n + ')' : ''));
+    }
+}
+
+// ---- bulk-buy helpers for upgrade tracks (x1 / x10 / Max) ----
+// Mirrors the building buy logic: given a cost function and the current
+// level, figure out how many levels the selected buy amount can afford.
+function levelsAffordable(costFn, level) {
+    let money = state.money;
+    let count = 0;
+    while (count < 50000) {
+        const cost = costFn(level + count);
+        if (cost > money) break;
+        money -= cost;
+        count++;
+    }
+    return count;
+}
+function levelsToBuy(costFn, level) {
+    if (buyAmount === Infinity) return levelsAffordable(costFn, level);
+    let count = 0;
+    let money = state.money;
+    while (count < buyAmount) {
+        const cost = costFn(level + count);
+        if (cost > money) break;
+        money -= cost;
+        count++;
+    }
+    return count;
+}
+function levelsBulkCost(costFn, level, n) {
+    let total = 0;
+    for (let k = 0; k < n; k++) total += costFn(level + k);
+    return total;
+}
+function upgradeBuyInfo(costFn, level) {
+    const n = levelsToBuy(costFn, level);
+    return { n, cost: n > 0 ? levelsBulkCost(costFn, level, n) : costFn(level) };
 }
 // Pollution is based on total Earth building count, scaled by rebirths.
 // More buildings = more smog. More rebirths = industry intensifies.
@@ -1047,9 +1089,9 @@ function update() {
     }
 
     if (plantBtn) {
-        const cost = plantUpgradeCost(state.plantLevel);
-        plantBtn.textContent = '⚛️ Upgrade Plant (lvl ' + state.plantLevel + ') - $' + fmt(cost);
-        plantBtn.disabled = state.money < cost;
+        const info = upgradeBuyInfo(plantUpgradeCost, state.plantLevel);
+        plantBtn.textContent = '⚛️ Upgrade Plant (lvl ' + state.plantLevel + ') - $' + fmt(info.cost) + (info.n > 1 ? ' (×' + info.n + ')' : '');
+        plantBtn.disabled = info.n === 0;
         const pSub = document.getElementById('plantSub');
         const eff = nuclearEfficiency();
         let pText = 'produces $' + fmt(plantIncome() * eff) + '/sec';
@@ -1058,38 +1100,38 @@ function update() {
         if (pSub) pSub.textContent = pText;
     }
     if (fuelBtn) {
-        const cost = fuelUpgradeCost(state.fuelLevel);
-        fuelBtn.textContent = '⚛️ Fuel Rods (lvl ' + state.fuelLevel + ') - $' + fmt(cost);
-        fuelBtn.disabled = state.money < cost;
+        const info = upgradeBuyInfo(fuelUpgradeCost, state.fuelLevel);
+        fuelBtn.textContent = '⚛️ Fuel Rods (lvl ' + state.fuelLevel + ') - $' + fmt(info.cost) + (info.n > 1 ? ' (×' + info.n + ')' : '');
+        fuelBtn.disabled = info.n === 0;
         const fSub = document.getElementById('fuelSub');
         if (fSub) fSub.textContent = '+' + (state.fuelLevel * 50) + '% plant output';
     }
     if (coolingBtn) {
-        const cost = coolingUpgradeCost(state.coolingLevel);
-        coolingBtn.textContent = '🌊 Cooling Towers (lvl ' + state.coolingLevel + ') - $' + fmt(cost);
-        coolingBtn.disabled = state.money < cost;
+        const info = upgradeBuyInfo(coolingUpgradeCost, state.coolingLevel);
+        coolingBtn.textContent = '🌊 Cooling Towers (lvl ' + state.coolingLevel + ') - $' + fmt(info.cost) + (info.n > 1 ? ' (×' + info.n + ')' : '');
+        coolingBtn.disabled = info.n === 0;
         const cSub = document.getElementById('coolingSub');
         if (cSub) cSub.textContent = 'river pollution ' + Math.round(nuclearRiverPollution() * 100) + '%';
     }
     if (turbineBtn) {
-        const cost = turbineUpgradeCost(state.turbineLevel);
-        turbineBtn.textContent = '⚙️ Steam Turbines (lvl ' + state.turbineLevel + ') - $' + fmt(cost);
-        turbineBtn.disabled = state.money < cost;
+        const info = upgradeBuyInfo(turbineUpgradeCost, state.turbineLevel);
+        turbineBtn.textContent = '⚙️ Steam Turbines (lvl ' + state.turbineLevel + ') - $' + fmt(info.cost) + (info.n > 1 ? ' (×' + info.n + ')' : '');
+        turbineBtn.disabled = info.n === 0;
         const tSub = document.getElementById('turbineSub');
         if (tSub) tSub.textContent = 'produces $' + fmt(turbineIncome()) + '/sec';
     }
 
     if (laserBtn) {
-        const cost = laserUpgradeCost(state.laserLevel);
-        laserBtn.textContent = '🔦 Space Laser (lvl ' + state.laserLevel + ') - $' + fmt(cost);
-        laserBtn.disabled = state.money < cost;
+        const info = upgradeBuyInfo(laserUpgradeCost, state.laserLevel);
+        laserBtn.textContent = '🔦 Space Laser (lvl ' + state.laserLevel + ') - $' + fmt(info.cost) + (info.n > 1 ? ' (×' + info.n + ')' : '');
+        laserBtn.disabled = info.n === 0;
         const lSub = document.getElementById('laserSub');
         if (lSub) lSub.textContent = 'produces $' + fmt(laserIncome()) + '/sec';
     }
     if (commandBtn) {
-        const cost = commandUpgradeCost(state.commandLevel);
-        commandBtn.textContent = '🛰️ Command Module (lvl ' + state.commandLevel + ') - $' + fmt(cost);
-        commandBtn.disabled = state.money < cost;
+        const info = upgradeBuyInfo(commandUpgradeCost, state.commandLevel);
+        commandBtn.textContent = '🛰️ Command Module (lvl ' + state.commandLevel + ') - $' + fmt(info.cost) + (info.n > 1 ? ' (×' + info.n + ')' : '');
+        commandBtn.disabled = info.n === 0;
         const cSub = document.getElementById('commandSub');
         if (cSub) cSub.textContent = '+' + (state.commandLevel * 25) + '% income everywhere';
     }
