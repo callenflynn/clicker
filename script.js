@@ -89,6 +89,8 @@ let state = {
     hydrogenLevel: 0,
     solarLevel: 0,
     targetingLevel: 0,
+    skillPoints: 0,
+    skillLevels: [0, 0, 0, 0, 0, 0],
     totalClicks: 0,
     totalEarned: 0,
     achievements: [],
@@ -174,8 +176,27 @@ const ACHIEVEMENTS = [
     { id: 'solar_1', name: 'Wings of Light', desc: 'Upgrade the Solar Array to level 1', check: s => s.solarLevel >= 1 },
     { id: 'solar_10', name: 'Sun Harvest', desc: 'Upgrade the Solar Array to level 10', check: s => s.solarLevel >= 10 },
     { id: 'targeting_1', name: 'Locked On', desc: 'Upgrade the Targeting Computer to level 1', check: s => s.targetingLevel >= 1 },
-    { id: 'targeting_10', name: 'Pinpoint', desc: 'Upgrade the Targeting Computer to level 10', check: s => s.targetingLevel >= 10 }
+    { id: 'targeting_10', name: 'Pinpoint', desc: 'Upgrade the Targeting Computer to level 10', check: s => s.targetingLevel >= 10 },
+    { id: 'adventure_1', name: 'Wayfarer', desc: 'Unlock the Adventure world', check: () => adventureUnlocked() },
+    { id: 'skill_1', name: 'First Steps', desc: 'Spend your first skill point', check: s => s.skillLevels.reduce((a, b) => a + b, 0) >= 1 },
+    { id: 'skill_10', name: 'Journeyman', desc: 'Own 10 total skill levels', check: s => s.skillLevels.reduce((a, b) => a + b, 0) >= 10 },
+    { id: 'skill_25', name: 'Master Adventurer', desc: 'Own 25 total skill levels', check: s => s.skillLevels.reduce((a, b) => a + b, 0) >= 25 }
 ];
+
+// ---- AFK Adventure: the skill tree ----
+// The adventure world has no upgrade buttons — instead you earn skill points
+// over time (1 per minute while playing, plus time away) and spend them on
+// passive skills that boost your whole game.
+const SKILLS = [
+    { id: 'iron', name: 'Iron Skin', icon: '🛡️', desc: '+5% all income per level', baseCost: 3, costMult: 1.6 },
+    { id: 'sword', name: 'Sword Master', icon: '⚔️', desc: '+20% click power per level', baseCost: 2, costMult: 1.5 },
+    { id: 'green', name: 'Green Thumb', icon: '🌱', desc: '+10% building income per level', baseCost: 2, costMult: 1.55 },
+    { id: 'caffeine', name: 'Caffeine', icon: '☕', desc: '+10% offline earnings per level', baseCost: 2, costMult: 1.5 },
+    { id: 'luck', name: 'Lucky Charm', icon: '💎', desc: '+5% crit chance per level', baseCost: 3, costMult: 1.6 },
+    { id: 'frenzy', name: 'Frenzy Master', icon: '🔥', desc: '+15% frenzy multiplier per level', baseCost: 3, costMult: 1.6 }
+];
+const SKILL_POINT_INTERVAL = 60; // seconds per skill point
+const SKILL_POINT_CAP = 240;     // points bankable (4 hours)
 
 const moneyEl = document.getElementById('money');
 const incomeEl = document.getElementById('income');
@@ -207,6 +228,8 @@ let controlBtn = null;
 let hydrogenBtn = null;
 let solarBtn = null;
 let targetingBtn = null;
+let skillBtns = [];
+let skillPointTimer = 0;
 let buildingBtns = [];
 let buyAmount = 1;
 
@@ -341,13 +364,14 @@ function buildingMap(i) {
     return buildings[i].map || (i >= 10 ? 'mars' : 'earth');
 }
 function incomePerSec() {
-    const base = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0);
+    const base = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0) * greenMult();
     const nuclear = currentMap === 'nuclear' ? (plantIncome() * nuclearEfficiency() + turbineIncome() + hydrogenIncome()) * controlMult() : 0;
     const station = currentMap === 'station' ? (laserIncome() + solarIncome()) * targetingMult() : 0;
-    return (base + nuclear + station) * incomeMult() * boostMult() * (1 - pollutionPenalty());
+    const camp = currentMap === 'adventure' ? campIncome() : 0;
+    return (base + nuclear + station + camp) * incomeMult() * boostMult() * (1 - pollutionPenalty());
 }
 function incomeMult() {
-    return (1 + 0.05 * state.achievements.length) * (1 + 0.25 * state.rebirths) * commandMult();
+    return (1 + 0.05 * state.achievements.length) * (1 + 0.25 * state.rebirths) * commandMult() * ironMult();
 }
 function comboMult() {
     return 1 + combo * 0.1;
@@ -521,6 +545,72 @@ function buyTargetingUpgrade() {
         state.targetingLevel += n;
         update();
         showToast('🎯 Targeting computer calibrated to level ' + state.targetingLevel + (n > 1 ? ' (×' + n + ')' : ''));
+    }
+}
+
+// ---- AFK Adventure: skill tree economy ----
+function skillLevel(i) {
+    return state.skillLevels[i] || 0;
+}
+function totalSkillLevels() {
+    return state.skillLevels.reduce((a, b) => a + b, 0);
+}
+// The camp fire crackles harder the more you've skilled up: it's the
+// adventure world's own income, and it keeps burning while you're AFK.
+function campIncome() {
+    return 1e18 * (1 + 0.5 * totalSkillLevels());
+}
+function ironMult() {
+    return 1 + 0.05 * skillLevel(0);
+}
+function swordMult() {
+    return 1 + 0.2 * skillLevel(1);
+}
+function greenMult() {
+    return 1 + 0.1 * skillLevel(2);
+}
+function caffeineMult() {
+    return 1 + 0.1 * skillLevel(3);
+}
+function critChance() {
+    return Math.min(1, 0.05 + 0.05 * skillLevel(4));
+}
+function frenzyMult() {
+    return FRENZY_MULT * (1 + 0.15 * skillLevel(5));
+}
+function skillCostAt(i) {
+    return Math.floor(SKILLS[i].baseCost * Math.pow(SKILLS[i].costMult, skillLevel(i)));
+}
+function skillLevelsToBuy(i) {
+    const lvl = skillLevel(i);
+    let points = state.skillPoints;
+    let count = 0;
+    const limit = buyAmount === Infinity ? 500 : buyAmount;
+    while (count < limit) {
+        const c = Math.floor(SKILLS[i].baseCost * Math.pow(SKILLS[i].costMult, lvl + count));
+        if (c > points) break;
+        points -= c;
+        count++;
+    }
+    return count;
+}
+function skillBulkCost(i, n) {
+    const lvl = skillLevel(i);
+    let total = 0;
+    for (let k = 0; k < n; k++) total += Math.floor(SKILLS[i].baseCost * Math.pow(SKILLS[i].costMult, lvl + k));
+    return total;
+}
+function skillBuyInfo(i) {
+    const n = skillLevelsToBuy(i);
+    return { n, cost: n > 0 ? skillBulkCost(i, n) : skillCostAt(i) };
+}
+function buySkill(i) {
+    const { n, cost } = skillBuyInfo(i);
+    if (n > 0 && state.skillPoints >= cost) {
+        state.skillPoints -= cost;
+        state.skillLevels[i] += n;
+        update();
+        showToast(SKILLS[i].icon + ' ' + SKILLS[i].name + ' upgraded to level ' + skillLevel(i) + (n > 1 ? ' (×' + n + ')' : ''));
     }
 }
 
@@ -806,10 +896,10 @@ function clickPlane() {
     lastComboMult = comboMult();
     if (combo > state.bestCombo) state.bestCombo = combo;
 
-    const crit = Math.random() < 0.05;
+    const crit = Math.random() < critChance();
     const frenzyOn = frenzyActive();
-    const mult = comboMult() * (crit ? 10 : 1) * (frenzyOn ? FRENZY_MULT : 1);
-    const amount = Math.round(state.clickPower * mult);
+    const mult = comboMult() * (crit ? 10 : 1) * (frenzyOn ? frenzyMult() : 1);
+    const amount = Math.round(state.clickPower * swordMult() * mult);
     state.money += amount;
     state.totalEarned += amount;
     state.totalClicks++;
@@ -856,6 +946,8 @@ function doRebirth() {
     state.hydrogenLevel = 0;
     state.solarLevel = 0;
     state.targetingLevel = 0;
+    state.skillPoints = 0;
+    state.skillLevels = [0, 0, 0, 0, 0, 0];
     invalidateLayers();
     save();
     update();
@@ -920,9 +1012,10 @@ function importSave() {
 // ---- shop UI (rebuilt when the map changes) ----
 function createShop() {
     shopItemsEl.innerHTML = '';
-    // The nuclear map is fully passive — no Click Power there, just the plant upgrade
+    // The nuclear map is fully passive — no Click Power there, just the plant upgrade.
+    // The adventure world replaces upgrades with its skill tree.
     cpBtn = null;
-    if (currentMap !== 'nuclear') {
+    if (currentMap !== 'nuclear' && currentMap !== 'adventure') {
         const cpDiv = document.createElement('div');
         cpDiv.className = 'item';
         cpBtn = document.createElement('button');
@@ -1061,6 +1154,32 @@ function createShop() {
         targetingBtn = null;
     }
 
+    // Adventure world: no upgrades — a skill tree you buy with skill points.
+    if (currentMap === 'adventure') {
+        const ptsDiv = document.createElement('div');
+        ptsDiv.className = 'item skill-points';
+        const ptsEl = document.createElement('div');
+        ptsEl.id = 'skillPoints';
+        ptsDiv.appendChild(ptsEl);
+        shopItemsEl.appendChild(ptsDiv);
+
+        skillBtns = SKILLS.map((s, i) => {
+            const div = document.createElement('div');
+            div.className = 'item';
+            const btn = document.createElement('button');
+            btn.onclick = () => buySkill(i);
+            div.appendChild(btn);
+            const sub = document.createElement('div');
+            sub.className = 'item-sub';
+            sub.id = 'skillSub' + i;
+            div.appendChild(sub);
+            shopItemsEl.appendChild(div);
+            return btn;
+        });
+    } else {
+        skillBtns = [];
+    }
+
     const allBuildings = buildings;
     buildingBtns = allBuildings.map((b, i) => {
         if (buildingMap(i) !== currentMap) return null;
@@ -1117,15 +1236,18 @@ function closeShop() {
 const MARS_COST = 1e7;
 const NUCLEAR_COST = 1e21;
 const STATION_COST = 1e24;
+const ADVENTURE_COST = 1e27;
 const NUCLEAR_KEY = 'clih-nuclear-unlocked';
 const MARS_KEY = 'clih-mars-unlocked';
 const STATION_KEY = 'clih-station-unlocked';
+const ADVENTURE_KEY = 'clih-adventure-unlocked';
 let currentMap = 'earth';
 const earthBtn = document.getElementById('earthBtn');
 const marsBtn = document.getElementById('marsBtn');
 const nuclearBtn = document.getElementById('nuclearBtn');
 const stationBtn = document.getElementById('stationBtn');
-const mapBtns = { earth: earthBtn, mars: marsBtn, nuclear: nuclearBtn, station: stationBtn };
+const adventureBtn = document.getElementById('adventureBtn');
+const mapBtns = { earth: earthBtn, mars: marsBtn, nuclear: nuclearBtn, station: stationBtn, adventure: adventureBtn };
 
 function marsUnlocked() {
     return localStorage.getItem(MARS_KEY) === '1';
@@ -1136,8 +1258,11 @@ function nuclearUnlocked() {
 function stationUnlocked() {
     return localStorage.getItem(STATION_KEY) === '1';
 }
-const MAP_LABELS = { earth: '🌍 Earth', mars: '🔴 Mars', nuclear: '☢️ Nuclear', station: '🛰️ Station' };
-const MAP_COSTS = { mars: MARS_COST, nuclear: NUCLEAR_COST, station: STATION_COST };
+function adventureUnlocked() {
+    return localStorage.getItem(ADVENTURE_KEY) === '1';
+}
+const MAP_LABELS = { earth: '🌍 Earth', mars: '🔴 Mars', nuclear: '☢️ Nuclear', station: '🛰️ Station', adventure: '🗺️ Adventure' };
+const MAP_COSTS = { mars: MARS_COST, nuclear: NUCLEAR_COST, station: STATION_COST, adventure: ADVENTURE_COST };
 
 function switchMap(target) {
     if (target === currentMap) return;
@@ -1154,7 +1279,7 @@ function buyMapUnlock(target) {
         return;
     }
     state.money -= cost;
-    const key = target === 'mars' ? MARS_KEY : target === 'nuclear' ? NUCLEAR_KEY : STATION_KEY;
+    const key = target === 'mars' ? MARS_KEY : target === 'nuclear' ? NUCLEAR_KEY : target === 'station' ? STATION_KEY : ADVENTURE_KEY;
     localStorage.setItem(key, '1');
     currentMap = target;
     showToast(MAP_LABELS[target] + ' unlocked!');
@@ -1171,17 +1296,19 @@ function goToMap(target) {
         buyMapUnlock('nuclear');
     } else if (target === 'station' && !stationUnlocked()) {
         buyMapUnlock('station');
+    } else if (target === 'adventure' && !adventureUnlocked()) {
+        buyMapUnlock('adventure');
     } else {
         switchMap(target);
     }
     updateMapBtn();
 }
 function updateMapBtn() {
-    ['earth', 'mars', 'nuclear', 'station'].forEach(m => {
+    ['earth', 'mars', 'nuclear', 'station', 'adventure'].forEach(m => {
         const btn = mapBtns[m];
         if (!btn) return;
         const isCurrent = currentMap === m;
-        const locked = m !== 'earth' && !(m === 'mars' ? marsUnlocked() : m === 'nuclear' ? nuclearUnlocked() : stationUnlocked());
+        const locked = m !== 'earth' && !(m === 'mars' ? marsUnlocked() : m === 'nuclear' ? nuclearUnlocked() : m === 'station' ? stationUnlocked() : adventureUnlocked());
         btn.textContent = locked ? MAP_LABELS[m] + ' ($' + fmt(MAP_COSTS[m]) + ')' : MAP_LABELS[m];
         btn.classList.toggle('active', isCurrent);
         btn.classList.toggle('locked', locked);
@@ -1191,6 +1318,7 @@ if (earthBtn) earthBtn.onclick = () => goToMap('earth');
 if (marsBtn) marsBtn.onclick = () => goToMap('mars');
 if (nuclearBtn) nuclearBtn.onclick = () => goToMap('nuclear');
 if (stationBtn) stationBtn.onclick = () => goToMap('station');
+if (adventureBtn) adventureBtn.onclick = () => goToMap('adventure');
 updateMapBtn();
 
 let saveMigrated = false;
@@ -1222,6 +1350,8 @@ function update() {
         ? 'The nuclear world is passive — upgrade the plant and watch the river turn green.'
         : currentMap === 'station'
         ? 'Click the astronaut to earn money. Upgrade the laser and the command module.'
+        : currentMap === 'adventure'
+        ? 'Click the hero to earn money. The camp earns while you are AFK — spend skill points in the shop.'
         : 'Click the plane to earn money. Buy buildings to grow your city.';
     canvas.style.cursor = currentMap === 'nuclear' ? 'default' : 'pointer';
 
@@ -1306,6 +1436,18 @@ function update() {
         const tSub2 = document.getElementById('targetingSub');
         if (tSub2) tSub2.textContent = '+' + (state.targetingLevel * 15) + '% station income';
     }
+    if (currentMap === 'adventure') {
+        const ptsEl = document.getElementById('skillPoints');
+        if (ptsEl) ptsEl.textContent = '⭐ Skill Points: ' + state.skillPoints + '  (earn +1 per minute, bank up to ' + SKILL_POINT_CAP + ')';
+        SKILLS.forEach((s, i) => {
+            if (!skillBtns[i]) return;
+            const info = skillBuyInfo(i);
+            skillBtns[i].textContent = s.icon + ' ' + s.name + ' (lvl ' + skillLevel(i) + ') - ' + info.cost + ' ⭐' + (info.n > 1 ? ' (×' + info.n + ')' : '');
+            skillBtns[i].disabled = info.n === 0;
+            const sub = document.getElementById('skillSub' + i);
+            if (sub) sub.textContent = s.desc;
+        });
+    }
 
     buildings.forEach((b, i) => {
         if (!buildingBtns[i]) return;
@@ -1336,7 +1478,7 @@ function updateMeta() {
     const owned = state.buildings.reduce((a, b) => a + b, 0);
     // Only re-render stats/achievements when something actually changed;
     // update() runs 10×/sec so rebuilding this HTML every tick is wasteful.
-    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.rebirths, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution(), earthPollution(), currentMap, state.laserLevel, state.commandLevel, state.fuelLevel, state.coolingLevel, state.turbineLevel, state.controlLevel, state.hydrogenLevel, state.solarLevel, state.targetingLevel, stationUnlocked()].join(',');
+    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.rebirths, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution(), earthPollution(), currentMap, state.laserLevel, state.commandLevel, state.fuelLevel, state.coolingLevel, state.turbineLevel, state.controlLevel, state.hydrogenLevel, state.solarLevel, state.targetingLevel, state.skillPoints, state.skillLevels.join('/'), stationUnlocked(), adventureUnlocked()].join(',');
     if (sig === metaSig) return;
     metaSig = sig;
 
@@ -1359,7 +1501,10 @@ function updateMeta() {
         '<div><span class="stat-label">Control rods:</span> lvl ' + state.controlLevel + ' (+' + (state.controlLevel * 15) + '% nuclear)</div>' +
         '<div><span class="stat-label">Hydrogen cells:</span> lvl ' + state.hydrogenLevel + ' ($' + fmt(hydrogenIncome()) + '/sec)</div>' +
         '<div><span class="stat-label">Solar array:</span> lvl ' + state.solarLevel + ' ($' + fmt(solarIncome()) + '/sec)</div>' +
-        '<div><span class="stat-label">Targeting computer:</span> lvl ' + state.targetingLevel + ' (+' + (state.targetingLevel * 15) + '% station)</div>';
+        '<div><span class="stat-label">Targeting computer:</span> lvl ' + state.targetingLevel + ' (+' + (state.targetingLevel * 15) + '% station)</div>' +
+        '<div><span class="stat-label">Skill points:</span> ' + state.skillPoints + ' ⭐</div>' +
+        '<div><span class="stat-label">Skill levels:</span> ' + totalSkillLevels() + '</div>' +
+        '<div><span class="stat-label">Adventure camp:</span> $' + fmt(campIncome()) + '/sec</div>';
 
 
     achievementsEl.innerHTML =
@@ -2424,6 +2569,163 @@ function drawAstronaut(x, y, gold) {
     }
 }
 
+function drawAdventureScene() {
+    // dusk sky
+    const skyTop = '#1c2340';
+    const skyBot = '#4a3a5e';
+    const grad = ctx.createLinearGradient(0, 0, 0, 40);
+    grad.addColorStop(0, skyTop);
+    grad.addColorStop(1, skyBot);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, PIXEL_W, 40);
+    // stars
+    ctx.fillStyle = '#dce6ff';
+    for (let i = 0; i < 26; i++) {
+        const sx = (i * 47 + 11) % PIXEL_W;
+        const sy = 2 + ((i * 31 + 7) % 26);
+        ctx.fillRect(sx, sy, 1, 1);
+    }
+    // a big moon
+    ctx.fillStyle = '#ffd9a0';
+    ctx.fillRect(266, 8, 10, 10);
+    ctx.fillStyle = '#f0c088';
+    ctx.fillRect(268, 10, 6, 6);
+
+    // rolling hills
+    ctx.fillStyle = '#24331f';
+    ctx.fillRect(0, 38, PIXEL_W, 30);
+    ctx.fillStyle = '#2c4026';
+    for (let x = 0; x < PIXEL_W; x += 8) {
+        const h = 4 + ((x * 13 + 5) % 12);
+        ctx.fillRect(x, 38 + (14 - h), 8, h);
+    }
+    // distant forest line
+    ctx.fillStyle = '#1b2818';
+    for (let x = 0; x < PIXEL_W; x += 5) {
+        const h = 6 + ((x * 17 + 3) % 10);
+        ctx.fillRect(x, 38 - h, 5, h);
+    }
+
+    // ground + winding path the hero walks
+    ctx.fillStyle = '#3a4a2e';
+    ctx.fillRect(0, 68, PIXEL_W, PIXEL_H - 68);
+    ctx.fillStyle = '#5a4a32';
+    for (let y = 70; y < PIXEL_H; y += 3) {
+        const off = Math.round(Math.sin(y * 0.13) * 22);
+        const w = 16 + Math.round((y - 70) * 0.8);
+        ctx.fillRect(PIXEL_W / 2 + off - Math.floor(w / 2), y, w, 2);
+    }
+    // grass tufts
+    ctx.fillStyle = '#4a5e38';
+    for (let i = 0; i < 14; i++) {
+        const gx = (i * 61 + 9) % PIXEL_W;
+        const gy = 74 + ((i * 23) % (PIXEL_H - 80));
+        ctx.fillRect(gx, gy, 2, 3);
+        ctx.fillRect(gx + 1, gy - 1, 1, 2);
+    }
+
+    // camp: tent
+    ctx.fillStyle = '#6a4a2a';
+    ctx.fillRect(52, 84, 22, 14);
+    ctx.fillStyle = '#7a5a34';
+    ctx.fillRect(52, 84, 22, 2);
+    ctx.fillStyle = '#4a3420';
+    ctx.fillRect(60, 92, 6, 6);
+    // signpost
+    ctx.fillStyle = '#5a3a24';
+    ctx.fillRect(92, 78, 3, 20);
+    ctx.fillStyle = '#6e4a2c';
+    ctx.fillRect(78, 80, 30, 8);
+    ctx.fillStyle = '#ffd9a0';
+    ctx.fillRect(80, 82, 12, 1);
+    ctx.fillRect(80, 84, 16, 1);
+    ctx.fillRect(80, 86, 9, 1);
+
+    // campfire — flickers, grows brighter with total skill levels
+    const sk = totalSkillLevels();
+    const flameH = Math.min(12, 6 + Math.floor(sk / 3));
+    const flick = (frame * 0.4) % 4 < 2 ? 1 : 0;
+    ctx.fillStyle = '#3a2c18';
+    ctx.fillRect(118, 100, 14, 4);
+    ctx.fillStyle = '#ff8c3a';
+    ctx.fillRect(122, 94 - flick, 6, 8);
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillRect(123, 96 - flick, 4, 4);
+    ctx.fillStyle = 'rgba(255, 150, 60, ' + (0.2 + sk * 0.02).toFixed(2) + ')';
+    ctx.fillRect(116, 86 - flick, 18, 18);
+    // campfire glow circle on the ground
+    ctx.fillStyle = 'rgba(255, 170, 60, 0.16)';
+    ctx.fillRect(112, 98, 26, 8);
+
+    // fireflies drifting over the camp
+    ctx.fillStyle = '#c8ff70';
+    for (let i = 0; i < 6; i++) {
+        const fx = 20 + ((i * 53 + frame * 0.4) % 280);
+        const fy = 56 + ((i * 37 + Math.floor(frame * 0.2)) % 46);
+        const on = (frame + i * 13) % 24 < 10;
+        if (on) ctx.fillRect(fx, fy, 2, 2);
+    }
+}
+
+function drawHero(x, y, gold) {
+    // soft shadow on the path
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fillRect(x, y, 14, 2);
+    // legs — walk cycle
+    const step = Math.floor(frame / 7) % 2;
+    ctx.fillStyle = '#3a3040';
+    if (step === 0) {
+        ctx.fillRect(x + 3, y - 5, 3, 5);
+        ctx.fillRect(x + 8, y - 3, 3, 3);
+    } else {
+        ctx.fillRect(x + 3, y - 3, 3, 3);
+        ctx.fillRect(x + 8, y - 5, 3, 5);
+    }
+    // boots
+    ctx.fillStyle = '#5a3a24';
+    ctx.fillRect(x + 2, y - 1, 4, 1);
+    ctx.fillRect(x + 8, y - 1, 4, 1);
+    // tunic
+    const tunic = gold ? '#ffd9a0' : '#c46a3a';
+    const trim = gold ? '#b8862a' : '#7a3a1e';
+    ctx.fillStyle = tunic;
+    ctx.fillRect(x + 2, y - 13, 10, 8);
+    ctx.fillStyle = trim;
+    ctx.fillRect(x + 2, y - 12, 10, 2);
+    ctx.fillRect(x + 4, y - 10, 2, 3);
+    ctx.fillRect(x + 8, y - 10, 2, 3);
+    // backpack + swinging arms
+    ctx.fillStyle = '#4a3a28';
+    ctx.fillRect(x, y - 12, 2, 6);
+    ctx.fillStyle = tunic;
+    if (step === 0) {
+        ctx.fillRect(x + 1, y - 12, 2, 4);
+        ctx.fillRect(x + 11, y - 11, 2, 3);
+    } else {
+        ctx.fillRect(x + 1, y - 11, 2, 3);
+        ctx.fillRect(x + 11, y - 12, 2, 4);
+    }
+    // head + floppy hat
+    ctx.fillStyle = '#e8c49a';
+    ctx.fillRect(x + 4, y - 18, 6, 5);
+    ctx.fillStyle = '#6a8a3a';
+    ctx.fillRect(x + 3, y - 21, 8, 3);
+    ctx.fillRect(x + 1, y - 20, 3, 2);
+    ctx.fillStyle = '#3a2c18';
+    ctx.fillRect(x + 4, y - 17, 3, 2);
+    // lantern held up front
+    ctx.fillStyle = '#3a3a44';
+    ctx.fillRect(x + 9, y - 16, 1, 4);
+    ctx.fillStyle = '#ffd23f';
+    if (frame % 16 < 9) ctx.fillRect(x + 9, y - 15, 2, 2);
+    // golden frenzy halo
+    if (gold) {
+        ctx.fillStyle = 'rgba(255, 210, 63, 0.55)';
+        ctx.fillRect(x - 1, y - 23, 16, 1);
+        ctx.fillRect(x - 1, y, 16, 1);
+    }
+}
+
 function drawClickHint() {
     const now = performance.now();
     if (now - lastPlaneClick < 5000) return;
@@ -2601,6 +2903,20 @@ function drawScene() {
         planeX = Math.floor(astroX);
         planeY = 124 + Math.round(Math.sin(frame * 0.2) * 1);
         drawAstronaut(planeX, planeY, frenzyActive());
+        drawClickHint();
+        drawCombo();
+        drawFloaters();
+        return;
+    }
+    // The adventure world is a self-contained AFK camp — a hero walks the
+    // path past the campfire, no scrolling city, no flyers.
+    if (currentMap === 'adventure') {
+        drawAdventureScene();
+        astroX += 0.55;
+        if (astroX > PIXEL_W + 24) astroX = -26;
+        planeX = Math.floor(astroX);
+        planeY = 122 + Math.round(Math.sin(frame * 0.2) * 1);
+        drawHero(planeX, planeY, frenzyActive());
         drawClickHint();
         drawCombo();
         drawFloaters();
@@ -2854,8 +3170,9 @@ canvas.addEventListener('click', (e) => {
         }
     }
 
-    const hitW = currentMap === 'station' ? 15 : planeW;
-    const hitH = currentMap === 'station' ? 24 : planeH;
+    const clickableHero = currentMap === 'station' || currentMap === 'adventure';
+    const hitW = clickableHero ? 15 : planeW;
+    const hitH = clickableHero ? 24 : planeH;
     if (px >= planeX && px <= planeX + hitW && py >= planeY - planeHitPad && py <= planeY + hitH + planeHitPad) {
         clickPlane();
     }
@@ -2885,7 +3202,7 @@ document.addEventListener('keydown', (e) => {
 
 document.getElementById('resetBtn').onclick = () => {
     if (!confirm('Reset all progress? This cannot be undone.')) return;
-    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), plantLevel: 0, fuelLevel: 0, coolingLevel: 0, turbineLevel: 0, laserLevel: 0, commandLevel: 0, controlLevel: 0, hydrogenLevel: 0, solarLevel: 0, targetingLevel: 0, totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
+    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), plantLevel: 0, fuelLevel: 0, coolingLevel: 0, turbineLevel: 0, laserLevel: 0, commandLevel: 0, controlLevel: 0, hydrogenLevel: 0, solarLevel: 0, targetingLevel: 0, skillPoints: 0, skillLevels: [0, 0, 0, 0, 0, 0], totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
     combo = 0;
     comboEndsAt = 0;
     frenzy.active = false;
@@ -2918,6 +3235,10 @@ function loadFrom(data) {
     state.hydrogenLevel = data.hydrogenLevel ?? 0;
     state.solarLevel = data.solarLevel ?? 0;
     state.targetingLevel = data.targetingLevel ?? 0;
+    state.skillPoints = data.skillPoints ?? 0;
+    state.skillLevels = Array.isArray(data.skillLevels) ? data.skillLevels : [0, 0, 0, 0, 0, 0];
+    while (state.skillLevels.length < SKILLS.length) state.skillLevels.push(0);
+    state.skillLevels.length = SKILLS.length;
     state.totalClicks = data.totalClicks ?? 0;
     state.totalEarned = data.totalEarned ?? 0;
     state.achievements = Array.isArray(data.achievements) ? data.achievements : [];
@@ -2965,14 +3286,21 @@ function applyOfflineEarnings() {
     const solarOffline = currentMap !== 'station' && state.solarLevel > 0
         ? solarIncome() * targetingMult() * incomeMult() * boostMult() * (1 - pollutionPenalty())
         : 0;
-    const earned = (incomePerSec() + plantOffline + turbineOffline + hydrogenOffline + laserOffline + solarOffline) * capped * 0.5;
+    // The adventure camp keeps burning while you're away too.
+    const campOffline = currentMap !== 'adventure' && totalSkillLevels() > 0
+        ? campIncome() * incomeMult() * boostMult() * (1 - pollutionPenalty())
+        : 0;
+    const earned = (incomePerSec() + plantOffline + turbineOffline + hydrogenOffline + laserOffline + solarOffline + campOffline) * capped * 0.5 * caffeineMult();
     if (earned < 1) return;
     state.money += earned;
     state.totalEarned += earned;
+    // Skill points bank while you're away too — 1 per minute away, capped.
+    const pointsGained = Math.max(0, Math.min(SKILL_POINT_CAP - state.skillPoints, Math.floor(elapsed / 60)));
+    state.skillPoints += pointsGained;
     const hrs = Math.floor(capped / 3600);
     const mins = Math.floor((capped % 3600) / 60);
     const away = hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + 'm';
-    showToast('👋 Welcome back! Earned $' + fmt(earned) + ' while away (' + away + ')');
+    showToast('👋 Welcome back! Earned $' + fmt(earned) + ' while away (' + away + ')' + (pointsGained > 0 ? ' + ⭐' + pointsGained + ' skill points' : ''));
 }
 
 // ---- idle income + auto-save ----
@@ -2980,6 +3308,14 @@ setInterval(() => {
     const inc = incomePerSec() / 10;
     state.money += inc;
     state.totalEarned += inc;
+    // Skill points accrue while you play, anywhere — 1 per minute, banked up.
+    if (state.skillPoints < SKILL_POINT_CAP) {
+        skillPointTimer += 0.1;
+        if (skillPointTimer >= SKILL_POINT_INTERVAL) {
+            skillPointTimer -= SKILL_POINT_INTERVAL;
+            state.skillPoints++;
+        }
+    }
     update();
 }, 100);
 setInterval(save, 1000);
