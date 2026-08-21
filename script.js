@@ -411,7 +411,7 @@ function laserUpgradeCost(level) {
 }
 function laserIncome() {
     if (state.laserLevel <= 0) return 0;
-    return 1e15 * Math.pow(2.5, state.laserLevel);
+    return 1e16 * Math.pow(3, state.laserLevel);
 }
 function buyLaserUpgrade() {
     const cost = laserUpgradeCost(state.laserLevel);
@@ -422,10 +422,10 @@ function buyLaserUpgrade() {
     showToast('🔦 Space Laser upgraded to level ' + state.laserLevel);
 }
 function commandUpgradeCost(level) {
-    return Math.floor(1e26 * Math.pow(5, level));
+    return Math.floor(1e25 * Math.pow(4, level));
 }
 function commandMult() {
-    return 1 + 0.1 * state.commandLevel;
+    return 1 + 0.25 * state.commandLevel;
 }
 function buyCommandUpgrade() {
     const cost = commandUpgradeCost(state.commandLevel);
@@ -1091,7 +1091,7 @@ function update() {
         commandBtn.textContent = '🛰️ Command Module (lvl ' + state.commandLevel + ') - $' + fmt(cost);
         commandBtn.disabled = state.money < cost;
         const cSub = document.getElementById('commandSub');
-        if (cSub) cSub.textContent = '+' + (state.commandLevel * 10) + '% income everywhere';
+        if (cSub) cSub.textContent = '+' + (state.commandLevel * 25) + '% income everywhere';
     }
 
     buildings.forEach((b, i) => {
@@ -1139,7 +1139,7 @@ function updateMeta() {
         '<div><span class="stat-label">Income bonus:</span> +' + Math.round((incomeMult() - 1) * 100) + '%</div>' +
         '<div><span class="stat-label">Pollution:</span> ' + pollution() + '% (-' + Math.round(pollutionPenalty() * 100) + '% income)</div>' +
         '<div><span class="stat-label">Space laser:</span> lvl ' + state.laserLevel + ' ($' + fmt(laserIncome()) + '/sec)</div>' +
-        '<div><span class="stat-label">Command module:</span> lvl ' + state.commandLevel + ' (+' + (state.commandLevel * 10) + '% all income)</div>' +
+        '<div><span class="stat-label">Command module:</span> lvl ' + state.commandLevel + ' (+' + (state.commandLevel * 25) + '% all income)</div>' +
         '<div><span class="stat-label">Fuel rods:</span> lvl ' + state.fuelLevel + ' (+' + (state.fuelLevel * 50) + '% plant)</div>' +
         '<div><span class="stat-label">Cooling towers:</span> lvl ' + state.coolingLevel + ' (river ' + Math.round(nuclearRiverPollution() * 100) + '%)</div>' +
         '<div><span class="stat-label">Steam turbines:</span> lvl ' + state.turbineLevel + ' ($' + fmt(turbineIncome()) + '/sec)</div>';
