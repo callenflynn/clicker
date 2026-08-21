@@ -102,6 +102,23 @@ canvas {
     gap: 10px;
 }
 .item button { width: 100%; }
+.tech-tree-head {
+    font-size: 13px;
+    font-weight: 700;
+    color: #334155;
+    text-align: center;
+    padding: 6px 0 2px;
+    border-bottom: 1px dashed #cbd5e1;
+}
+.tech-tier {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-align: center;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 4px;
+}
 .item-sub {
     font-size: 11px;
     color: #64748b;

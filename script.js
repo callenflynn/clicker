@@ -187,13 +187,17 @@ const ACHIEVEMENTS = [
 // The adventure world has no upgrade buttons — instead you earn skill points
 // over time (1 per minute while playing, plus time away) and spend them on
 // passive skills that boost your whole game.
+// Tech tree: two branches, three tiers. Later skills require the skill that
+// precedes them on their branch. Tier 1: sword / green. Tier 2: caffeine
+// (needs green) / luck (needs sword). Tier 3: iron (needs caffeine) / frenzy
+// (needs luck). Indices are stable so existing saves keep their levels.
 const SKILLS = [
-    { id: 'iron', name: 'Iron Skin', icon: '🛡️', desc: '+5% all income per level', baseCost: 3, costMult: 1.6 },
-    { id: 'sword', name: 'Sword Master', icon: '⚔️', desc: '+20% click power per level', baseCost: 2, costMult: 1.5 },
-    { id: 'green', name: 'Green Thumb', icon: '🌱', desc: '+10% building income per level', baseCost: 2, costMult: 1.55 },
-    { id: 'caffeine', name: 'Caffeine', icon: '☕', desc: '+10% offline earnings per level', baseCost: 2, costMult: 1.5 },
-    { id: 'luck', name: 'Lucky Charm', icon: '💎', desc: '+5% crit chance per level', baseCost: 3, costMult: 1.6 },
-    { id: 'frenzy', name: 'Frenzy Master', icon: '🔥', desc: '+15% frenzy multiplier per level', baseCost: 3, costMult: 1.6 }
+    { id: 'iron', name: 'Iron Skin', icon: '🛡️', desc: '+5% all income per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 3 },
+    { id: 'sword', name: 'Sword Master', icon: '⚔️', desc: '+20% click power per level', baseCost: 2, costMult: 1.5, tier: 1 },
+    { id: 'green', name: 'Green Thumb', icon: '🌱', desc: '+10% building income per level', baseCost: 2, costMult: 1.55, tier: 1 },
+    { id: 'caffeine', name: 'Caffeine', icon: '☕', desc: '+10% offline earnings per level', baseCost: 2, costMult: 1.5, tier: 2, requires: 2 },
+    { id: 'luck', name: 'Lucky Charm', icon: '💎', desc: '+5% crit chance per level', baseCost: 3, costMult: 1.6, tier: 2, requires: 1 },
+    { id: 'frenzy', name: 'Frenzy Master', icon: '🔥', desc: '+15% frenzy multiplier per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 4 }
 ];
 const SKILL_POINT_INTERVAL = 60; // seconds per skill point
 const SKILL_POINT_CAP = 240;     // points bankable (4 hours)
@@ -555,6 +559,16 @@ function skillLevel(i) {
 function totalSkillLevels() {
     return state.skillLevels.reduce((a, b) => a + b, 0);
 }
+// A skill is locked until its prerequisite (the skill before it on its
+// branch) has at least 1 level.
+function skillLocked(i) {
+    const r = SKILLS[i].requires;
+    return r !== undefined && skillLevel(r) < 1;
+}
+function skillLockedBy(i) {
+    const r = SKILLS[i].requires;
+    return r === undefined ? null : SKILLS[r].name;
+}
 // The camp fire crackles harder the more you've skilled up: it's the
 // adventure world's own income, and it keeps burning while you're AFK.
 function campIncome() {
@@ -582,6 +596,7 @@ function skillCostAt(i) {
     return Math.floor(SKILLS[i].baseCost * Math.pow(SKILLS[i].costMult, skillLevel(i)));
 }
 function skillLevelsToBuy(i) {
+    if (skillLocked(i)) return 0;
     const lvl = skillLevel(i);
     let points = state.skillPoints;
     let count = 0;
@@ -605,6 +620,10 @@ function skillBuyInfo(i) {
     return { n, cost: n > 0 ? skillBulkCost(i, n) : skillCostAt(i) };
 }
 function buySkill(i) {
+    if (skillLocked(i)) {
+        showToast('🔒 Unlock ' + skillLockedBy(i) + ' first');
+        return;
+    }
     const { n, cost } = skillBuyInfo(i);
     if (n > 0 && state.skillPoints >= cost) {
         state.skillPoints -= cost;
@@ -1154,7 +1173,7 @@ function createShop() {
         targetingBtn = null;
     }
 
-    // Adventure world: no upgrades — a skill tree you buy with skill points.
+    // Adventure world: no upgrades — a tech tree you buy with skill points.
     if (currentMap === 'adventure') {
         const ptsDiv = document.createElement('div');
         ptsDiv.className = 'item skill-points';
@@ -1163,7 +1182,24 @@ function createShop() {
         ptsDiv.appendChild(ptsEl);
         shopItemsEl.appendChild(ptsDiv);
 
-        skillBtns = SKILLS.map((s, i) => {
+        const head = document.createElement('div');
+        head.className = 'tech-tree-head';
+        head.textContent = '🗺️ Tech Tree';
+        shopItemsEl.appendChild(head);
+
+        // Render skills grouped by tier (branch order within a tier).
+        skillBtns = [];
+        const order = SKILLS.map((s, i) => i).sort((a, b) => SKILLS[a].tier - SKILLS[b].tier || a - b);
+        let lastTier = 0;
+        order.forEach(i => {
+            const tier = SKILLS[i].tier;
+            if (tier !== lastTier) {
+                lastTier = tier;
+                const tierHead = document.createElement('div');
+                tierHead.className = 'tech-tier';
+                tierHead.textContent = 'Tier ' + tier;
+                shopItemsEl.appendChild(tierHead);
+            }
             const div = document.createElement('div');
             div.className = 'item';
             const btn = document.createElement('button');
@@ -1174,7 +1210,7 @@ function createShop() {
             sub.id = 'skillSub' + i;
             div.appendChild(sub);
             shopItemsEl.appendChild(div);
-            return btn;
+            skillBtns[i] = btn;
         });
     } else {
         skillBtns = [];
@@ -1351,7 +1387,7 @@ function update() {
         : currentMap === 'station'
         ? 'Click the astronaut to earn money. Upgrade the laser and the command module.'
         : currentMap === 'adventure'
-        ? 'Click the hero to earn money. The camp earns while you are AFK — spend skill points in the shop.'
+        ? 'Click the hero to earn money. The camp earns while you are AFK — unlock tech tree skills with skill points.'
         : 'Click the plane to earn money. Buy buildings to grow your city.';
     canvas.style.cursor = currentMap === 'nuclear' ? 'default' : 'pointer';
 
@@ -1441,10 +1477,16 @@ function update() {
         if (ptsEl) ptsEl.textContent = '⭐ Skill Points: ' + state.skillPoints + '  (earn +1 per minute, bank up to ' + SKILL_POINT_CAP + ')';
         SKILLS.forEach((s, i) => {
             if (!skillBtns[i]) return;
+            const sub = document.getElementById('skillSub' + i);
+            if (skillLocked(i)) {
+                skillBtns[i].textContent = '🔒 ' + s.icon + ' ' + s.name + ' (locked)';
+                skillBtns[i].disabled = true;
+                if (sub) sub.textContent = 'Requires ' + skillLockedBy(i);
+                return;
+            }
             const info = skillBuyInfo(i);
             skillBtns[i].textContent = s.icon + ' ' + s.name + ' (lvl ' + skillLevel(i) + ') - ' + info.cost + ' ⭐' + (info.n > 1 ? ' (×' + info.n + ')' : '');
             skillBtns[i].disabled = info.n === 0;
-            const sub = document.getElementById('skillSub' + i);
             if (sub) sub.textContent = s.desc;
         });
     }
@@ -2516,16 +2558,10 @@ function drawAstronaut(x, y, gold) {
     // soft shadow on the deck
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.fillRect(x, y, 15, 2);
-    // legs — walk cycle
-    const step = Math.floor(frame / 7) % 2;
+    // legs — standing still
     ctx.fillStyle = dark;
-    if (step === 0) {
-        ctx.fillRect(x + 3, y - 5, 3, 5);
-        ctx.fillRect(x + 9, y - 3, 3, 3);
-    } else {
-        ctx.fillRect(x + 3, y - 3, 3, 3);
-        ctx.fillRect(x + 9, y - 5, 3, 5);
-    }
+    ctx.fillRect(x + 3, y - 5, 3, 5);
+    ctx.fillRect(x + 9, y - 5, 3, 5);
     // boots
     ctx.fillStyle = '#c46a3a';
     ctx.fillRect(x + 2, y - 1, 4, 1);
@@ -2537,17 +2573,12 @@ function drawAstronaut(x, y, gold) {
     ctx.fillRect(x + 2, y - 12, 11, 2);
     ctx.fillRect(x + 3, y - 10, 2, 3);
     ctx.fillRect(x + 10, y - 10, 2, 3);
-    // backpack + arms swinging with the walk
+    // backpack + arms hanging at the sides
     ctx.fillStyle = '#8a94a8';
     ctx.fillRect(x, y - 12, 2, 7);
     ctx.fillStyle = suit;
-    if (step === 0) {
-        ctx.fillRect(x + 1, y - 12, 2, 4);
-        ctx.fillRect(x + 12, y - 11, 2, 3);
-    } else {
-        ctx.fillRect(x + 1, y - 11, 2, 3);
-        ctx.fillRect(x + 12, y - 12, 2, 4);
-    }
+    ctx.fillRect(x + 1, y - 12, 2, 4);
+    ctx.fillRect(x + 12, y - 12, 2, 4);
     // helmet
     ctx.fillStyle = suit;
     ctx.fillRect(x + 3, y - 19, 8, 6);
@@ -2671,16 +2702,10 @@ function drawHero(x, y, gold) {
     // soft shadow on the path
     ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
     ctx.fillRect(x, y, 14, 2);
-    // legs — walk cycle
-    const step = Math.floor(frame / 7) % 2;
+    // legs — standing still
     ctx.fillStyle = '#3a3040';
-    if (step === 0) {
-        ctx.fillRect(x + 3, y - 5, 3, 5);
-        ctx.fillRect(x + 8, y - 3, 3, 3);
-    } else {
-        ctx.fillRect(x + 3, y - 3, 3, 3);
-        ctx.fillRect(x + 8, y - 5, 3, 5);
-    }
+    ctx.fillRect(x + 3, y - 5, 3, 5);
+    ctx.fillRect(x + 8, y - 5, 3, 5);
     // boots
     ctx.fillStyle = '#5a3a24';
     ctx.fillRect(x + 2, y - 1, 4, 1);
@@ -2694,17 +2719,12 @@ function drawHero(x, y, gold) {
     ctx.fillRect(x + 2, y - 12, 10, 2);
     ctx.fillRect(x + 4, y - 10, 2, 3);
     ctx.fillRect(x + 8, y - 10, 2, 3);
-    // backpack + swinging arms
+    // backpack + arms hanging at the sides
     ctx.fillStyle = '#4a3a28';
     ctx.fillRect(x, y - 12, 2, 6);
     ctx.fillStyle = tunic;
-    if (step === 0) {
-        ctx.fillRect(x + 1, y - 12, 2, 4);
-        ctx.fillRect(x + 11, y - 11, 2, 3);
-    } else {
-        ctx.fillRect(x + 1, y - 11, 2, 3);
-        ctx.fillRect(x + 11, y - 12, 2, 4);
-    }
+    ctx.fillRect(x + 1, y - 12, 2, 4);
+    ctx.fillRect(x + 11, y - 12, 2, 4);
     // head + floppy hat
     ctx.fillStyle = '#e8c49a';
     ctx.fillRect(x + 4, y - 18, 6, 5);
@@ -2898,9 +2918,7 @@ function drawScene() {
     // pollution, no flyers. An astronaut walks the deck instead.
     if (currentMap === 'station') {
         drawStationInterior();
-        astroX += 0.55;
-        if (astroX > PIXEL_W + 24) astroX = -26;
-        planeX = Math.floor(astroX);
+        planeX = 152;
         planeY = 124 + Math.round(Math.sin(frame * 0.2) * 1);
         drawAstronaut(planeX, planeY, frenzyActive());
         drawClickHint();
@@ -2912,9 +2930,7 @@ function drawScene() {
     // path past the campfire, no scrolling city, no flyers.
     if (currentMap === 'adventure') {
         drawAdventureScene();
-        astroX += 0.55;
-        if (astroX > PIXEL_W + 24) astroX = -26;
-        planeX = Math.floor(astroX);
+        planeX = 152;
         planeY = 122 + Math.round(Math.sin(frame * 0.2) * 1);
         drawHero(planeX, planeY, frenzyActive());
         drawClickHint();
