@@ -1281,18 +1281,10 @@ function renderTechTree() {
         tierRow.appendChild(nodesRow);
         techTreeEl.appendChild(tierRow);
         tierNodes = [];
-        // branch connectors light up when the path below is open
+        // branch links connect each parent to its child, lit green once the
+        // path below is unlocked
         if (lastTier < 3) {
-            const conn = document.createElement('div');
-            conn.className = 'tree-connector';
-            ['a', 'b'].forEach(branch => {
-                const idx = skillIndex(branch, lastTier);
-                const b = document.createElement('div');
-                b.className = 'tree-branch' + (idx >= 0 && skillLevel(idx) >= 1 ? ' lit' : '');
-                b.textContent = '▼';
-                conn.appendChild(b);
-            });
-            techTreeEl.appendChild(conn);
+            techTreeEl.appendChild(branchLinksSvg(lastTier + 1));
         }
     };
     order.forEach(i => {
@@ -1324,6 +1316,33 @@ function renderTechTree() {
     });
     flushTier();
 }
+// Draws the tree's branch lines between tier `toTier` and the tier above it:
+// one gently-bowed path per branch, gray when locked and green when the skill
+// below is unlocked.
+function branchLinksSvg(toTier) {
+    const w = 264, h = 26, nw = 120, gap = 24;
+    const xs = [Math.round(nw / 2), Math.round(nw + gap + nw / 2)];
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', w);
+    svg.setAttribute('height', h);
+    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+    svg.className = 'tree-links';
+    ['a', 'b'].forEach((branch, k) => {
+        const idx = skillIndex(branch, toTier);
+        const open = idx >= 0 && !skillLocked(idx);
+        const x = xs[k];
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M ' + x + ' 0 C ' + (x - 5) + ' ' + (h * 0.35) + ', ' + (x + 5) + ' ' + (h * 0.65) + ', ' + x + ' ' + h);
+        path.setAttribute('class', 'tree-link' + (open ? ' lit' : ''));
+        svg.appendChild(path);
+        const tri = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        tri.setAttribute('points', (x - 3) + ',' + h + ' ' + (x + 3) + ',' + h + ' ' + x + ',' + (h - 5));
+        tri.setAttribute('class', 'tree-link' + (open ? ' lit' : ''));
+        svg.appendChild(tri);
+    });
+    return svg;
+}
+
 function openTech() {
     renderTechTree();
     techPanel.classList.add('open');
