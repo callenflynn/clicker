@@ -192,12 +192,12 @@ const ACHIEVEMENTS = [
 // (needs green) / luck (needs sword). Tier 3: iron (needs caffeine) / frenzy
 // (needs luck). Indices are stable so existing saves keep their levels.
 const SKILLS = [
-    { id: 'iron', name: 'Iron Skin', icon: '🛡️', desc: '+5% all income per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 3 },
-    { id: 'sword', name: 'Sword Master', icon: '⚔️', desc: '+20% click power per level', baseCost: 2, costMult: 1.5, tier: 1 },
-    { id: 'green', name: 'Green Thumb', icon: '🌱', desc: '+10% building income per level', baseCost: 2, costMult: 1.55, tier: 1 },
-    { id: 'caffeine', name: 'Caffeine', icon: '☕', desc: '+10% offline earnings per level', baseCost: 2, costMult: 1.5, tier: 2, requires: 2 },
-    { id: 'luck', name: 'Lucky Charm', icon: '💎', desc: '+5% crit chance per level', baseCost: 3, costMult: 1.6, tier: 2, requires: 1 },
-    { id: 'frenzy', name: 'Frenzy Master', icon: '🔥', desc: '+15% frenzy multiplier per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 4 }
+    { id: 'iron', name: 'Iron Skin', icon: '🛡️', desc: '+5% all income per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 3, branch: 'b' },
+    { id: 'sword', name: 'Sword Master', icon: '⚔️', desc: '+20% click power per level', baseCost: 2, costMult: 1.5, tier: 1, branch: 'a' },
+    { id: 'green', name: 'Green Thumb', icon: '🌱', desc: '+10% building income per level', baseCost: 2, costMult: 1.55, tier: 1, branch: 'b' },
+    { id: 'caffeine', name: 'Caffeine', icon: '☕', desc: '+10% offline earnings per level', baseCost: 2, costMult: 1.5, tier: 2, requires: 2, branch: 'b' },
+    { id: 'luck', name: 'Lucky Charm', icon: '💎', desc: '+5% crit chance per level', baseCost: 3, costMult: 1.6, tier: 2, requires: 1, branch: 'a' },
+    { id: 'frenzy', name: 'Frenzy Master', icon: '🔥', desc: '+15% frenzy multiplier per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 4, branch: 'a' }
 ];
 const SKILL_POINT_INTERVAL = 60; // seconds per skill point
 const SKILL_POINT_CAP = 240;     // points bankable (4 hours)
@@ -214,6 +214,10 @@ const toastsEl = document.getElementById('toasts');
 const shopPanel = document.getElementById('shopPanel');
 const shopBackdrop = document.getElementById('shopBackdrop');
 const shopToggle = document.getElementById('shopToggle');
+const techPanel = document.getElementById('techPanel');
+const techBackdrop = document.getElementById('techBackdrop');
+const techClose = document.getElementById('techClose');
+const techTreeEl = document.getElementById('techTree');
 const shopClose = document.getElementById('shopClose');
 const rebirthInfoEl = document.getElementById('rebirthInfo');
 const rebirthBtn = document.getElementById('rebirthBtn');
@@ -568,6 +572,12 @@ function skillLocked(i) {
 function skillLockedBy(i) {
     const r = SKILLS[i].requires;
     return r === undefined ? null : SKILLS[r].name;
+}
+function skillIndex(branch, tier) {
+    for (let i = 0; i < SKILLS.length; i++) {
+        if (SKILLS[i].branch === branch && SKILLS[i].tier === tier) return i;
+    }
+    return -1;
 }
 // The camp fire crackles harder the more you've skilled up: it's the
 // adventure world's own income, and it keeps burning while you're AFK.
@@ -937,7 +947,7 @@ function clickPlane() {
 // fire repeated keydown events; stopImmediatePropagation keeps the later
 // handler from also clicking on the same press.
 document.addEventListener('keydown', (e) => {
-    if (e.code !== 'Space' || shopPanel.classList.contains('open') || currentMap === 'nuclear') return;
+    if (e.code !== 'Space' || shopPanel.classList.contains('open') || techPanel.classList.contains('open') || currentMap === 'nuclear') return;
     e.preventDefault();
     if (e.repeat) { e.stopImmediatePropagation(); return; }
     if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
@@ -1173,48 +1183,8 @@ function createShop() {
         targetingBtn = null;
     }
 
-    // Adventure world: no upgrades — a tech tree you buy with skill points.
-    if (currentMap === 'adventure') {
-        const ptsDiv = document.createElement('div');
-        ptsDiv.className = 'item skill-points';
-        const ptsEl = document.createElement('div');
-        ptsEl.id = 'skillPoints';
-        ptsDiv.appendChild(ptsEl);
-        shopItemsEl.appendChild(ptsDiv);
-
-        const head = document.createElement('div');
-        head.className = 'tech-tree-head';
-        head.textContent = '🗺️ Tech Tree';
-        shopItemsEl.appendChild(head);
-
-        // Render skills grouped by tier (branch order within a tier).
-        skillBtns = [];
-        const order = SKILLS.map((s, i) => i).sort((a, b) => SKILLS[a].tier - SKILLS[b].tier || a - b);
-        let lastTier = 0;
-        order.forEach(i => {
-            const tier = SKILLS[i].tier;
-            if (tier !== lastTier) {
-                lastTier = tier;
-                const tierHead = document.createElement('div');
-                tierHead.className = 'tech-tier';
-                tierHead.textContent = 'Tier ' + tier;
-                shopItemsEl.appendChild(tierHead);
-            }
-            const div = document.createElement('div');
-            div.className = 'item';
-            const btn = document.createElement('button');
-            btn.onclick = () => buySkill(i);
-            div.appendChild(btn);
-            const sub = document.createElement('div');
-            sub.className = 'item-sub';
-            sub.id = 'skillSub' + i;
-            div.appendChild(sub);
-            shopItemsEl.appendChild(div);
-            skillBtns[i] = btn;
-        });
-    } else {
-        skillBtns = [];
-    }
+    // Adventure world uses a dedicated tech tree panel, not the shop sidebar.
+    skillBtns = [];
 
     const allBuildings = buildings;
     buildingBtns = allBuildings.map((b, i) => {
@@ -1268,6 +1238,102 @@ function closeShop() {
     shopBackdrop.classList.remove('open');
 }
 
+// ---- adventure tech tree panel ----
+// The adventure world doesn't use the shop sidebar: it has its own
+// progressive tech tree overlay with tiered branches and lit connectors.
+function renderTechTree() {
+    techTreeEl.innerHTML = '';
+    const pts = document.createElement('div');
+    pts.className = 'tech-points';
+    pts.textContent = '⭐ ' + state.skillPoints + ' skill points — earn +1/min while playing, bank up to ' + SKILL_POINT_CAP;
+    techTreeEl.appendChild(pts);
+
+    // buy modes for the tree
+    const modeRow = document.createElement('div');
+    modeRow.className = 'tree-modes';
+    [1, 10, Infinity].forEach(m => {
+        const b = document.createElement('button');
+        b.textContent = m === Infinity ? 'Max' : 'x' + m;
+        b.className = 'tree-mode' + (buyAmount === m ? ' active' : '');
+        b.onclick = () => { buyAmount = m; renderTechTree(); };
+        modeRow.appendChild(b);
+    });
+    techTreeEl.appendChild(modeRow);
+
+    const order = SKILLS.map((s, i) => i).sort((a, b) => {
+        if (SKILLS[a].tier !== SKILLS[b].tier) return SKILLS[a].tier - SKILLS[b].tier;
+        if (SKILLS[a].branch !== SKILLS[b].branch) return SKILLS[a].branch < SKILLS[b].branch ? -1 : 1;
+        return a - b;
+    });
+    let lastTier = 0;
+    let tierNodes = [];
+    const flushTier = () => {
+        if (!tierNodes.length) return;
+        const tierRow = document.createElement('div');
+        tierRow.className = 'tree-tier';
+        const label = document.createElement('div');
+        label.className = 'tree-tier-label';
+        label.textContent = 'Tier ' + lastTier;
+        tierRow.appendChild(label);
+        const nodesRow = document.createElement('div');
+        nodesRow.className = 'tree-tier-nodes';
+        tierNodes.forEach(n => nodesRow.appendChild(n));
+        tierRow.appendChild(nodesRow);
+        techTreeEl.appendChild(tierRow);
+        tierNodes = [];
+        // branch connectors light up when the path below is open
+        if (lastTier < 3) {
+            const conn = document.createElement('div');
+            conn.className = 'tree-connector';
+            ['a', 'b'].forEach(branch => {
+                const idx = skillIndex(branch, lastTier);
+                const b = document.createElement('div');
+                b.className = 'tree-branch' + (idx >= 0 && skillLevel(idx) >= 1 ? ' lit' : '');
+                b.textContent = '▼';
+                conn.appendChild(b);
+            });
+            techTreeEl.appendChild(conn);
+        }
+    };
+    order.forEach(i => {
+        const tier = SKILLS[i].tier;
+        if (tier !== lastTier) { flushTier(); lastTier = tier; }
+        const s = SKILLS[i];
+        const node = document.createElement('div');
+        node.className = 'tree-node' + (skillLocked(i) ? ' locked' : '');
+        const btn = document.createElement('button');
+        btn.onclick = () => { buySkill(i); renderTechTree(); };
+        node.appendChild(btn);
+        const lvl = document.createElement('div');
+        lvl.className = 'tree-lvl';
+        if (skillLocked(i)) {
+            btn.textContent = '🔒 ' + s.icon + ' ' + s.name;
+            lvl.textContent = 'Requires ' + skillLockedBy(i);
+        } else {
+            btn.textContent = s.icon + ' ' + s.name;
+            const info = skillBuyInfo(i);
+            lvl.textContent = 'lvl ' + skillLevel(i) + ' · ' + info.cost + ' ⭐' + (info.n > 1 ? ' (×' + info.n + ')' : '');
+            btn.disabled = info.n === 0;
+        }
+        node.appendChild(lvl);
+        const desc = document.createElement('div');
+        desc.className = 'tree-desc';
+        desc.textContent = s.desc;
+        node.appendChild(desc);
+        tierNodes.push(node);
+    });
+    flushTier();
+}
+function openTech() {
+    renderTechTree();
+    techPanel.classList.add('open');
+    techBackdrop.classList.add('open');
+}
+function closeTech() {
+    techPanel.classList.remove('open');
+    techBackdrop.classList.remove('open');
+}
+
 // ---- map switching (Earth / Mars / Nuclear / Station) ----
 const MARS_COST = 1e7;
 const NUCLEAR_COST = 1e21;
@@ -1303,6 +1369,7 @@ const MAP_COSTS = { mars: MARS_COST, nuclear: NUCLEAR_COST, station: STATION_COS
 function switchMap(target) {
     if (target === currentMap) return;
     currentMap = target;
+    if (target === 'adventure') closeShop(); else closeTech();
     showToast('Switched to ' + MAP_LABELS[target]);
     invalidateLayers();
     createShop();
@@ -1318,6 +1385,7 @@ function buyMapUnlock(target) {
     const key = target === 'mars' ? MARS_KEY : target === 'nuclear' ? NUCLEAR_KEY : target === 'station' ? STATION_KEY : ADVENTURE_KEY;
     localStorage.setItem(key, '1');
     currentMap = target;
+    if (target === 'adventure') closeShop(); else closeTech();
     showToast(MAP_LABELS[target] + ' unlocked!');
     invalidateLayers();
     createShop();
@@ -1472,24 +1540,8 @@ function update() {
         const tSub2 = document.getElementById('targetingSub');
         if (tSub2) tSub2.textContent = '+' + (state.targetingLevel * 15) + '% station income';
     }
-    if (currentMap === 'adventure') {
-        const ptsEl = document.getElementById('skillPoints');
-        if (ptsEl) ptsEl.textContent = '⭐ Skill Points: ' + state.skillPoints + '  (earn +1 per minute, bank up to ' + SKILL_POINT_CAP + ')';
-        SKILLS.forEach((s, i) => {
-            if (!skillBtns[i]) return;
-            const sub = document.getElementById('skillSub' + i);
-            if (skillLocked(i)) {
-                skillBtns[i].textContent = '🔒 ' + s.icon + ' ' + s.name + ' (locked)';
-                skillBtns[i].disabled = true;
-                if (sub) sub.textContent = 'Requires ' + skillLockedBy(i);
-                return;
-            }
-            const info = skillBuyInfo(i);
-            skillBtns[i].textContent = s.icon + ' ' + s.name + ' (lvl ' + skillLevel(i) + ') - ' + info.cost + ' ⭐' + (info.n > 1 ? ' (×' + info.n + ')' : '');
-            skillBtns[i].disabled = info.n === 0;
-            if (sub) sub.textContent = s.desc;
-        });
-    }
+    // The adventure world's tech tree panel renders itself.
+    shopToggle.textContent = currentMap === 'adventure' ? '🌲 Tech Tree' : '🛒 Shop';
 
     buildings.forEach((b, i) => {
         if (!buildingBtns[i]) return;
@@ -3195,9 +3247,11 @@ canvas.addEventListener('click', (e) => {
 });
 
 // ---- shop + reset + save settings ----
-shopToggle.onclick = openShop;
+shopToggle.onclick = () => { if (currentMap === 'adventure') openTech(); else openShop(); };
 shopClose.onclick = closeShop;
 shopBackdrop.onclick = closeShop;
+techClose.onclick = closeTech;
+techBackdrop.onclick = closeTech;
 rebirthBtn.onclick = doRebirth;
 document.getElementById('exportBtn').onclick = exportSave;
 document.getElementById('importBtn').onclick = importSave;
@@ -3206,9 +3260,10 @@ document.getElementById('importBtn').onclick = importSave;
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeShop();
+        closeTech();
         return;
     }
-    if (e.code === 'Space' && !shopPanel.classList.contains('open') && currentMap !== 'nuclear') {
+    if (e.code === 'Space' && !shopPanel.classList.contains('open') && !techPanel.classList.contains('open') && currentMap !== 'nuclear') {
         e.preventDefault();
         // Don't re-trigger a shop button that still has focus
         if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
