@@ -90,7 +90,7 @@ let state = {
     solarLevel: 0,
     targetingLevel: 0,
     skillPoints: 0,
-    skillLevels: [0, 0, 0, 0, 0, 0],
+    skillLevels: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
     totalClicks: 0,
     totalEarned: 0,
     achievements: [],
@@ -187,17 +187,33 @@ const ACHIEVEMENTS = [
 // The adventure world has no upgrade buttons — instead you earn skill points
 // over time (1 per minute while playing, plus time away) and spend them on
 // passive skills that boost your whole game.
-// Tech tree: two branches, three tiers. Later skills require the skill that
-// precedes them on their branch. Tier 1: sword / green. Tier 2: caffeine
-// (needs green) / luck (needs sword). Tier 3: iron (needs caffeine) / frenzy
-// (needs luck). Indices are stable so existing saves keep their levels.
+// The tech tree fans out like a real tree: one root skill (Tier 1), three
+// branches off it (Tier 2), three skills per branch (Tier 3), then deeper
+// leaves (Tier 4) — 20 skills in total, and more can be added later.
+// Indices are stable so existing saves keep their levels.
 const SKILLS = [
-    { id: 'iron', name: 'Iron Skin', icon: '🛡️', desc: '+5% all income per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 3, branch: 'b' },
-    { id: 'sword', name: 'Sword Master', icon: '⚔️', desc: '+20% click power per level', baseCost: 2, costMult: 1.5, tier: 1, branch: 'a' },
-    { id: 'green', name: 'Green Thumb', icon: '🌱', desc: '+10% building income per level', baseCost: 2, costMult: 1.55, tier: 1, branch: 'b' },
-    { id: 'caffeine', name: 'Caffeine', icon: '☕', desc: '+10% offline earnings per level', baseCost: 2, costMult: 1.5, tier: 2, requires: 2, branch: 'b' },
-    { id: 'luck', name: 'Lucky Charm', icon: '💎', desc: '+5% crit chance per level', baseCost: 3, costMult: 1.6, tier: 2, requires: 1, branch: 'a' },
-    { id: 'frenzy', name: 'Frenzy Master', icon: '🔥', desc: '+15% frenzy multiplier per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 4, branch: 'a' }
+    // Tier 1 — the trunk: everything hangs off Adventurer's Spark.
+    { id: 'iron', name: 'Iron Skin', icon: '🛡️', desc: '+5% all income per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 2, branch: 'b' },
+    { id: 'sword', name: 'Sword Master', icon: '⚔️', desc: '+20% click power per level', baseCost: 2, costMult: 1.5, tier: 2, requires: 6, branch: 'a' },
+    { id: 'green', name: 'Green Thumb', icon: '🌱', desc: '+10% building income per level', baseCost: 2, costMult: 1.55, tier: 2, requires: 6, branch: 'b' },
+    { id: 'caffeine', name: 'Caffeine', icon: '☕', desc: '+10% offline earnings per level', baseCost: 2, costMult: 1.5, tier: 2, requires: 6, branch: 'c' },
+    { id: 'luck', name: 'Lucky Charm', icon: '💎', desc: '+5% crit chance per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 1, branch: 'a' },
+    { id: 'frenzy', name: 'Frenzy Master', icon: '🔥', desc: '+15% frenzy multiplier per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 1, branch: 'a' },
+    { id: 'spark', name: "Adventurer's Spark", icon: '🌟', desc: '+2% all income per level', baseCost: 1, costMult: 1.35, tier: 1 },
+    { id: 'blade', name: 'Blade Sharpening', icon: '🗡️', desc: '+10% click power per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 1, branch: 'a' },
+    { id: 'fertile', name: 'Fertile Soil', icon: '🌾', desc: '+10% building income per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 2, branch: 'b' },
+    { id: 'brick', name: 'Brick & Mortar', icon: '🏰', desc: '-2% building costs per level', baseCost: 4, costMult: 1.7, tier: 3, requires: 2, branch: 'b' },
+    { id: 'time', name: 'Time Keeper', icon: '⏳', desc: '+10% offline earnings per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 3, branch: 'c' },
+    { id: 'pack', name: 'Pack Rat', icon: '🎒', desc: '+1 skill-point cap per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 3, branch: 'c' },
+    { id: 'loop', name: 'Loop Master', icon: '🔄', desc: '+1% skill-point rate per level', baseCost: 3, costMult: 1.6, tier: 3, requires: 3, branch: 'c' },
+    // Tier 4 — deeper leaves, one or more per Tier-3 parent.
+    { id: 'lightning', name: 'Lightning Reflexes', icon: '⚡', desc: '+5% crit chance per level', baseCost: 5, costMult: 1.7, tier: 4, requires: 4, branch: 'a' },
+    { id: 'berserker', name: 'Berserker', icon: '🌀', desc: '+15% frenzy multiplier per level', baseCost: 5, costMult: 1.7, tier: 4, requires: 5, branch: 'a' },
+    { id: 'precision', name: 'Precision', icon: '🎯', desc: '+10% click power per level', baseCost: 5, costMult: 1.7, tier: 4, requires: 7, branch: 'a' },
+    { id: 'midas', name: 'Midas Touch', icon: '💰', desc: '+2% all income per level', baseCost: 5, costMult: 1.7, tier: 4, requires: 0, branch: 'b' },
+    { id: 'crew', name: 'Construction Crew', icon: '🏗️', desc: '-2% building costs per level', baseCost: 6, costMult: 1.7, tier: 4, requires: 9, branch: 'b' },
+    { id: 'sleep', name: 'Deep Sleep', icon: '💤', desc: '+10% offline earnings per level', baseCost: 5, costMult: 1.7, tier: 4, requires: 10, branch: 'c' },
+    { id: 'compass', name: 'Compass', icon: '🧭', desc: '+1% skill-point rate per level', baseCost: 5, costMult: 1.7, tier: 4, requires: 12, branch: 'c' }
 ];
 const SKILL_POINT_INTERVAL = 60; // seconds per skill point
 const SKILL_POINT_CAP = 240;     // points bankable (4 hours)
@@ -282,14 +298,14 @@ const SKYLINE_SPAN = 16 * 24;
 
 // ---- helpers ----
 function buildingCostAt(i, owned) {
-    return Math.floor(buildings[i].baseCost * Math.pow(buildings[i].costMult, owned));
+    return Math.floor(buildings[i].baseCost * Math.pow(buildings[i].costMult, owned) * costReductionMult());
 }
 function buildingCost(i) {
     return buildingCostAt(i, state.buildings[i]);
 }
 function bulkCost(i, n) {
     const c = buildings[i];
-    return Math.floor(c.baseCost * Math.pow(c.costMult, state.buildings[i]) * (Math.pow(c.costMult, n) - 1) / (c.costMult - 1));
+    return Math.floor(c.baseCost * Math.pow(c.costMult, state.buildings[i]) * (Math.pow(c.costMult, n) - 1) / (c.costMult - 1) * costReductionMult());
 }
 function maxAffordable(i) {
     let money = state.money;
@@ -372,14 +388,14 @@ function buildingMap(i) {
     return buildings[i].map || (i >= 10 ? 'mars' : 'earth');
 }
 function incomePerSec() {
-    const base = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0) * greenMult();
+    const base = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0) * greenMult() * fertileMult();
     const nuclear = currentMap === 'nuclear' ? (plantIncome() * nuclearEfficiency() + turbineIncome() + hydrogenIncome()) * controlMult() : 0;
     const station = currentMap === 'station' ? (laserIncome() + solarIncome()) * targetingMult() : 0;
     const camp = currentMap === 'adventure' ? campIncome() : 0;
     return (base + nuclear + station + camp) * incomeMult() * boostMult() * (1 - pollutionPenalty());
 }
 function incomeMult() {
-    return (1 + 0.05 * state.achievements.length) * (1 + 0.25 * state.rebirths) * commandMult() * ironMult();
+    return (1 + 0.05 * state.achievements.length) * (1 + 0.25 * state.rebirths) * commandMult() * ironMult() * sparkMult() * midasMult();
 }
 function comboMult() {
     return 1 + combo * 0.1;
@@ -597,10 +613,45 @@ function caffeineMult() {
     return 1 + 0.1 * skillLevel(3);
 }
 function critChance() {
-    return Math.min(1, 0.05 + 0.05 * skillLevel(4));
+    return Math.min(1, 0.05 + 0.05 * skillLevel(4) + 0.05 * skillLevel(13));
 }
 function frenzyMult() {
-    return FRENZY_MULT * (1 + 0.15 * skillLevel(5));
+    return FRENZY_MULT * (1 + 0.15 * skillLevel(5) + 0.15 * skillLevel(14));
+}
+// ---- deeper tech-tree skills ----
+function sparkMult() {
+    return 1 + 0.02 * skillLevel(6);
+}
+function bladeMult() {
+    return 1 + 0.1 * skillLevel(7);
+}
+function fertileMult() {
+    return 1 + 0.1 * skillLevel(8);
+}
+// Building cost reduction from Brick & Mortar and Construction Crew.
+function costReductionMult() {
+    return Math.max(0.05, (1 - 0.02 * skillLevel(9)) * (1 - 0.02 * skillLevel(17)));
+}
+function timeMult() {
+    return 1 + 0.1 * skillLevel(10);
+}
+function skillPointCap() {
+    return SKILL_POINT_CAP + skillLevel(11);
+}
+function loopRate() {
+    return 1 + 0.01 * skillLevel(12);
+}
+function precisionMult() {
+    return 1 + 0.1 * skillLevel(15);
+}
+function midasMult() {
+    return 1 + 0.02 * skillLevel(16);
+}
+function deepSleepMult() {
+    return 1 + 0.1 * skillLevel(18);
+}
+function compassRate() {
+    return 1 + 0.01 * skillLevel(19);
 }
 function skillCostAt(i) {
     return Math.floor(SKILLS[i].baseCost * Math.pow(SKILLS[i].costMult, skillLevel(i)));
@@ -928,7 +979,7 @@ function clickPlane() {
     const crit = Math.random() < critChance();
     const frenzyOn = frenzyActive();
     const mult = comboMult() * (crit ? 10 : 1) * (frenzyOn ? frenzyMult() : 1);
-    const amount = Math.round(state.clickPower * swordMult() * mult);
+    const amount = Math.round(state.clickPower * swordMult() * bladeMult() * precisionMult() * mult);
     state.money += amount;
     state.totalEarned += amount;
     state.totalClicks++;
@@ -1240,15 +1291,49 @@ function closeShop() {
 
 // ---- adventure tech tree panel ----
 // The adventure world doesn't use the shop sidebar: it has its own
-// progressive tech tree overlay with tiered branches and lit connectors.
+// progressive tech tree popup. The tree fans out from a single root skill
+// into three branches, and each branch grows deeper — 1 -> 3 -> 3-per-branch
+// -> more. Deeper skills unlock the ones below them on their branch.
+const TREE_BRANCHES = [
+    { branch: 'a', label: '⚔️ Combat' },
+    { branch: 'b', label: '🌱 Growth' },
+    { branch: 'c', label: '☕ AFK' }
+];
+const ROOT_SKILL = 6;
+
+function makeSkillNode(i, isRoot) {
+    const s = SKILLS[i];
+    const node = document.createElement('div');
+    node.className = 'tree-node' + (isRoot ? ' tree-root-node' : '') + (skillLocked(i) ? ' locked' : '');
+    const btn = document.createElement('button');
+    btn.onclick = () => { buySkill(i); renderTechTree(); };
+    node.appendChild(btn);
+    const lvl = document.createElement('div');
+    lvl.className = 'tree-lvl';
+    if (skillLocked(i)) {
+        btn.textContent = '🔒 ' + s.icon + ' ' + s.name;
+        lvl.textContent = 'Requires ' + skillLockedBy(i);
+    } else {
+        btn.textContent = s.icon + ' ' + s.name;
+        const info = skillBuyInfo(i);
+        lvl.textContent = 'lvl ' + skillLevel(i) + ' · ' + info.cost + ' ⭐' + (info.n > 1 ? ' (×' + info.n + ')' : '');
+        btn.disabled = info.n === 0;
+    }
+    node.appendChild(lvl);
+    const desc = document.createElement('div');
+    desc.className = 'tree-desc';
+    desc.textContent = s.desc;
+    node.appendChild(desc);
+    return node;
+}
+
 function renderTechTree() {
     techTreeEl.innerHTML = '';
     const pts = document.createElement('div');
     pts.className = 'tech-points';
-    pts.textContent = '⭐ ' + state.skillPoints + ' skill points — earn +1/min while playing, bank up to ' + SKILL_POINT_CAP;
+    pts.textContent = '⭐ ' + state.skillPoints + ' skill points — +1/min while playing, bank up to ' + skillPointCap();
     techTreeEl.appendChild(pts);
 
-    // buy modes for the tree
     const modeRow = document.createElement('div');
     modeRow.className = 'tree-modes';
     [1, 10, Infinity].forEach(m => {
@@ -1260,83 +1345,60 @@ function renderTechTree() {
     });
     techTreeEl.appendChild(modeRow);
 
-    const order = SKILLS.map((s, i) => i).sort((a, b) => {
-        if (SKILLS[a].tier !== SKILLS[b].tier) return SKILLS[a].tier - SKILLS[b].tier;
-        if (SKILLS[a].branch !== SKILLS[b].branch) return SKILLS[a].branch < SKILLS[b].branch ? -1 : 1;
-        return a - b;
-    });
-    let lastTier = 0;
-    let tierNodes = [];
-    const flushTier = () => {
-        if (!tierNodes.length) return;
-        const tierRow = document.createElement('div');
-        tierRow.className = 'tree-tier';
+    // The trunk: one skill that everything hangs off of.
+    const rootRow = document.createElement('div');
+    rootRow.className = 'tree-root';
+    rootRow.appendChild(makeSkillNode(ROOT_SKILL, true));
+    techTreeEl.appendChild(rootRow);
+    techTreeEl.appendChild(rootFanSvg());
+
+    // Three branches, each a column that grows deeper as you unlock it.
+    const branches = document.createElement('div');
+    branches.className = 'tree-branches';
+    TREE_BRANCHES.forEach(bm => {
+        const col = document.createElement('div');
+        col.className = 'tree-branch';
         const label = document.createElement('div');
-        label.className = 'tree-tier-label';
-        label.textContent = 'Tier ' + lastTier;
-        tierRow.appendChild(label);
-        const nodesRow = document.createElement('div');
-        nodesRow.className = 'tree-tier-nodes';
-        tierNodes.forEach(n => nodesRow.appendChild(n));
-        tierRow.appendChild(nodesRow);
-        techTreeEl.appendChild(tierRow);
-        tierNodes = [];
-        // branch links connect each parent to its child, lit green once the
-        // path below is unlocked
-        if (lastTier < 3) {
-            techTreeEl.appendChild(branchLinksSvg(lastTier + 1));
+        label.className = 'tree-branch-label';
+        label.textContent = bm.label;
+        col.appendChild(label);
+        const ids = [];
+        for (let i = 0; i < SKILLS.length; i++) {
+            if (SKILLS[i].branch === bm.branch) ids.push(i);
         }
-    };
-    order.forEach(i => {
-        const tier = SKILLS[i].tier;
-        if (tier !== lastTier) { flushTier(); lastTier = tier; }
-        const s = SKILLS[i];
-        const node = document.createElement('div');
-        node.className = 'tree-node' + (skillLocked(i) ? ' locked' : '');
-        const btn = document.createElement('button');
-        btn.onclick = () => { buySkill(i); renderTechTree(); };
-        node.appendChild(btn);
-        const lvl = document.createElement('div');
-        lvl.className = 'tree-lvl';
-        if (skillLocked(i)) {
-            btn.textContent = '🔒 ' + s.icon + ' ' + s.name;
-            lvl.textContent = 'Requires ' + skillLockedBy(i);
-        } else {
-            btn.textContent = s.icon + ' ' + s.name;
-            const info = skillBuyInfo(i);
-            lvl.textContent = 'lvl ' + skillLevel(i) + ' · ' + info.cost + ' ⭐' + (info.n > 1 ? ' (×' + info.n + ')' : '');
-            btn.disabled = info.n === 0;
-        }
-        node.appendChild(lvl);
-        const desc = document.createElement('div');
-        desc.className = 'tree-desc';
-        desc.textContent = s.desc;
-        node.appendChild(desc);
-        tierNodes.push(node);
+        ids.sort((a, b) => SKILLS[a].tier - SKILLS[b].tier || a - b);
+        ids.forEach((idx, k) => {
+            if (k > 0) {
+                const link = document.createElement('div');
+                link.className = 'tree-col-link' + (skillLocked(idx) ? '' : ' lit');
+                col.appendChild(link);
+            }
+            col.appendChild(makeSkillNode(idx));
+        });
+        branches.appendChild(col);
     });
-    flushTier();
+    techTreeEl.appendChild(branches);
 }
-// Draws the tree's branch lines between tier `toTier` and the tier above it:
-// one gently-bowed path per branch, gray when locked and green when the skill
-// below is unlocked.
-function branchLinksSvg(toTier) {
-    const w = 264, h = 26, nw = 120, gap = 24;
-    const xs = [Math.round(nw / 2), Math.round(nw + gap + nw / 2)];
+
+// Fan-out lines from the trunk down into the three branch headers — gray
+// until that branch's header is unlocked, green once it is.
+function rootFanSvg() {
+    const w = 380, h = 30;
+    const headerIds = [1, 2, 3];
+    const xs = [60, 190, 320];
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', w);
     svg.setAttribute('height', h);
     svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
-    svg.className = 'tree-links';
-    ['a', 'b'].forEach((branch, k) => {
-        const idx = skillIndex(branch, toTier);
-        const open = idx >= 0 && !skillLocked(idx);
-        const x = xs[k];
+    svg.className = 'tree-fan';
+    xs.forEach((x, k) => {
+        const open = !skillLocked(headerIds[k]);
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', 'M ' + x + ' 0 C ' + (x - 5) + ' ' + (h * 0.35) + ', ' + (x + 5) + ' ' + (h * 0.65) + ', ' + x + ' ' + h);
+        path.setAttribute('d', 'M ' + (w / 2) + ' 4 C ' + ((w / 2 + x) / 2) + ' ' + (h * 0.55) + ', ' + ((w / 2 + x) / 2) + ' ' + (h * 0.55) + ', ' + x + ' ' + (h - 2));
         path.setAttribute('class', 'tree-link' + (open ? ' lit' : ''));
         svg.appendChild(path);
         const tri = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        tri.setAttribute('points', (x - 3) + ',' + h + ' ' + (x + 3) + ',' + h + ' ' + x + ',' + (h - 5));
+        tri.setAttribute('points', (x - 3) + ',' + (h - 2) + ' ' + (x + 3) + ',' + (h - 2) + ' ' + x + ',' + (h - 7));
         tri.setAttribute('class', 'tree-link' + (open ? ' lit' : ''));
         svg.appendChild(tri);
     });
@@ -3292,7 +3354,7 @@ document.addEventListener('keydown', (e) => {
 
 document.getElementById('resetBtn').onclick = () => {
     if (!confirm('Reset all progress? This cannot be undone.')) return;
-    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), plantLevel: 0, fuelLevel: 0, coolingLevel: 0, turbineLevel: 0, laserLevel: 0, commandLevel: 0, controlLevel: 0, hydrogenLevel: 0, solarLevel: 0, targetingLevel: 0, skillPoints: 0, skillLevels: [0, 0, 0, 0, 0, 0], totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
+    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), plantLevel: 0, fuelLevel: 0, coolingLevel: 0, turbineLevel: 0, laserLevel: 0, commandLevel: 0, controlLevel: 0, hydrogenLevel: 0, solarLevel: 0, targetingLevel: 0, skillPoints: 0, skillLevels: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
     combo = 0;
     comboEndsAt = 0;
     frenzy.active = false;
@@ -3326,9 +3388,12 @@ function loadFrom(data) {
     state.solarLevel = data.solarLevel ?? 0;
     state.targetingLevel = data.targetingLevel ?? 0;
     state.skillPoints = data.skillPoints ?? 0;
-    state.skillLevels = Array.isArray(data.skillLevels) ? data.skillLevels : [0, 0, 0, 0, 0, 0];
+    state.skillLevels = Array.isArray(data.skillLevels) ? data.skillLevels : [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
     while (state.skillLevels.length < SKILLS.length) state.skillLevels.push(0);
     state.skillLevels.length = SKILLS.length;
+    // Saves made before the tree had a trunk: grant the root skill so
+    // existing tier-2+ levels don't get locked behind it.
+    if (state.skillLevels.reduce((a, b) => a + b, 0) > 0 && state.skillLevels[6] === 0) state.skillLevels[6] = 1;
     state.totalClicks = data.totalClicks ?? 0;
     state.totalEarned = data.totalEarned ?? 0;
     state.achievements = Array.isArray(data.achievements) ? data.achievements : [];
@@ -3380,12 +3445,12 @@ function applyOfflineEarnings() {
     const campOffline = currentMap !== 'adventure' && totalSkillLevels() > 0
         ? campIncome() * incomeMult() * boostMult() * (1 - pollutionPenalty())
         : 0;
-    const earned = (incomePerSec() + plantOffline + turbineOffline + hydrogenOffline + laserOffline + solarOffline + campOffline) * capped * 0.5 * caffeineMult();
+    const earned = (incomePerSec() + plantOffline + turbineOffline + hydrogenOffline + laserOffline + solarOffline + campOffline) * capped * 0.5 * caffeineMult() * timeMult() * deepSleepMult();
     if (earned < 1) return;
     state.money += earned;
     state.totalEarned += earned;
     // Skill points bank while you're away too — 1 per minute away, capped.
-    const pointsGained = Math.max(0, Math.min(SKILL_POINT_CAP - state.skillPoints, Math.floor(elapsed / 60)));
+    const pointsGained = Math.max(0, Math.min(skillPointCap() - state.skillPoints, Math.floor(elapsed / 60 * loopRate() * compassRate())));
     state.skillPoints += pointsGained;
     const hrs = Math.floor(capped / 3600);
     const mins = Math.floor((capped % 3600) / 60);
@@ -3399,8 +3464,9 @@ setInterval(() => {
     state.money += inc;
     state.totalEarned += inc;
     // Skill points accrue while you play, anywhere — 1 per minute, banked up.
-    if (state.skillPoints < SKILL_POINT_CAP) {
-        skillPointTimer += 0.1;
+    // Loop Master and Compass make them come faster.
+    if (state.skillPoints < skillPointCap()) {
+        skillPointTimer += 0.1 * loopRate() * compassRate();
         if (skillPointTimer >= SKILL_POINT_INTERVAL) {
             skillPointTimer -= SKILL_POINT_INTERVAL;
             state.skillPoints++;
