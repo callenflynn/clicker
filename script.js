@@ -25,7 +25,13 @@ const buildings = [
     { name: 'Recycling Plant', baseCost: 2.6e17,  costMult: 1.15, income: 2.5e11, pollutionReduction: 8, map: 'earth' },
     { name: 'Hydro Dam',      baseCost: 8e17,      costMult: 1.15, income: 7e11, pollutionReduction: 3, map: 'earth' },
     { name: 'Terraforming Lab', baseCost: 2.6e18, costMult: 1.15, income: 1.8e12, map: 'mars' },
-    { name: 'Quantum Relay',  baseCost: 8e18,      costMult: 1.15, income: 5e12, map: 'mars' }
+    { name: 'Quantum Relay',  baseCost: 8e18,      costMult: 1.15, income: 5e12, map: 'mars' },
+    { name: 'Fusion Plant',   baseCost: 1e19,      costMult: 1.15, income: 3e12, map: 'earth' },
+    { name: 'Arcology',       baseCost: 5e19,      costMult: 1.15, income: 9e12, map: 'earth' },
+    { name: 'Sky Garden',     baseCost: 2.5e20,    costMult: 1.15, income: 3e13, map: 'earth' },
+    { name: 'Dust Farm',      baseCost: 2.6e19,    costMult: 1.15, income: 7e12, map: 'mars' },
+    { name: 'Ice Miner',      baseCost: 7e19,      costMult: 1.15, income: 2e13, map: 'mars' },
+    { name: 'Olympus Forge',  baseCost: 2.6e20,    costMult: 1.15, income: 6e13, map: 'mars' }
 ];
 
 
@@ -51,7 +57,13 @@ const BUILDING_STYLES = [
     { w: 30, h: 24, body: '#4f9d69', dark: '#285a3a', layer: 1, kind: 'recycler' }, // Recycling Plant
     { w: 36, h: 32, body: '#5b8fa8', dark: '#2f5668', layer: 2, kind: 'hydro' }, // Hydro Dam
     { w: 34, h: 30, body: '#6bbf78', dark: '#31734a', layer: 1, kind: 'terraform' }, // Terraforming Lab
-    { w: 34, h: 38, body: '#b88cff', dark: '#5f3e9c', layer: 2, kind: 'quantum' } // Quantum Relay
+    { w: 34, h: 38, body: '#b88cff', dark: '#5f3e9c', layer: 2, kind: 'quantum' }, // Quantum Relay
+    { w: 30, h: 34, body: '#ffb44a', dark: '#a86a1e', layer: 1, kind: 'fusion' },   // Fusion Plant
+    { w: 32, h: 44, body: '#6ea8a0', dark: '#3f6b64', layer: 2, kind: 'arcology' }, // Arcology
+    { w: 28, h: 40, body: '#7fd4a0', dark: '#3f8a5f', layer: 2, kind: 'skygarden' },// Sky Garden
+    { w: 30, h: 26, body: '#c98a5b', dark: '#8a5a38', layer: 0, kind: 'dustfarm' }, // Dust Farm
+    { w: 30, h: 28, body: '#7fd4f0', dark: '#3a7a9a', layer: 1, kind: 'iceminer' }, // Ice Miner
+    { w: 34, h: 36, body: '#c46a3a', dark: '#7a3d1e', layer: 2, kind: 'forge' }     // Olympus Forge
 ];
 
 // Depth bands drawn back-to-front. Taller buildings live further back,
@@ -68,6 +80,11 @@ let state = {
     clickLevel: 0,
     buildings: buildings.map(() => 0),
     plantLevel: 0,
+    fuelLevel: 0,
+    coolingLevel: 0,
+    turbineLevel: 0,
+    laserLevel: 0,
+    commandLevel: 0,
     totalClicks: 0,
     totalEarned: 0,
     achievements: [],
@@ -128,7 +145,24 @@ const ACHIEVEMENTS = [
     { id: 'quantum_1', name: 'Quantum Leap', desc: 'Own a Quantum Relay', check: s => s.buildings[20] >= 1 },
     { id: 'plant_1', name: 'Critical Mass', desc: 'Upgrade the nuclear plant to level 1', check: s => s.plantLevel >= 1 },
     { id: 'plant_10', name: 'Nuclear Winter', desc: 'Upgrade the nuclear plant to level 10', check: s => s.plantLevel >= 10 },
-    { id: 'plant_25', name: 'Fusion Master', desc: 'Upgrade the nuclear plant to level 25', check: s => s.plantLevel >= 25 }
+    { id: 'plant_25', name: 'Fusion Master', desc: 'Upgrade the nuclear plant to level 25', check: s => s.plantLevel >= 25 },
+    { id: 'fuel_1', name: 'Enriched', desc: 'Upgrade Fuel Rods to level 1', check: s => s.fuelLevel >= 1 },
+    { id: 'fuel_10', name: 'Plutonium Lord', desc: 'Upgrade Fuel Rods to level 10', check: s => s.fuelLevel >= 10 },
+    { id: 'cooling_1', name: 'Clean Steam', desc: 'Upgrade Cooling Towers to level 1', check: s => s.coolingLevel >= 1 },
+    { id: 'cooling_10', name: 'Pure Water', desc: 'Upgrade Cooling Towers to level 10', check: s => s.coolingLevel >= 10 },
+    { id: 'turbine_1', name: 'Full Steam Ahead', desc: 'Upgrade Steam Turbines to level 1', check: s => s.turbineLevel >= 1 },
+    { id: 'turbine_10', name: 'Max Pressure', desc: 'Upgrade Steam Turbines to level 10', check: s => s.turbineLevel >= 10 },
+    { id: 'fusion_1', name: 'Star Forge', desc: 'Own a Fusion Plant', check: s => s.buildings[21] >= 1 },
+    { id: 'arcology_1', name: 'City in a Shell', desc: 'Own an Arcology', check: s => s.buildings[22] >= 1 },
+    { id: 'skygarden_1', name: 'Hanging Gardens', desc: 'Own a Sky Garden', check: s => s.buildings[23] >= 1 },
+    { id: 'dustfarm_1', name: 'Red Harvest', desc: 'Own a Dust Farm', check: s => s.buildings[24] >= 1 },
+    { id: 'iceminer_1', name: 'Cold Storage', desc: 'Own an Ice Miner', check: s => s.buildings[25] >= 1 },
+    { id: 'forge_1', name: 'Hammer of Olympus', desc: 'Own an Olympus Forge', check: s => s.buildings[26] >= 1 },
+    { id: 'orbit_1', name: 'High Orbit', desc: 'Unlock the Space Station', check: () => stationUnlocked() },
+    { id: 'laser_1', name: 'Pew Pew', desc: 'Upgrade the Space Laser to level 1', check: s => s.laserLevel >= 1 },
+    { id: 'laser_10', name: 'Death Ray', desc: 'Upgrade the Space Laser to level 10', check: s => s.laserLevel >= 10 },
+    { id: 'command_1', name: 'Bridge Officer', desc: 'Upgrade the Command Module to level 1', check: s => s.commandLevel >= 1 },
+    { id: 'command_10', name: 'Fleet Admiral', desc: 'Upgrade the Command Module to level 10', check: s => s.commandLevel >= 10 }
 ];
 
 const moneyEl = document.getElementById('money');
@@ -152,6 +186,11 @@ const clickSoundEl = document.getElementById('clickSound');
 
 let cpBtn = null;
 let plantBtn = null;
+let fuelBtn = null;
+let coolingBtn = null;
+let turbineBtn = null;
+let laserBtn = null;
+let commandBtn = null;
 let buildingBtns = [];
 let buyAmount = 1;
 
@@ -159,6 +198,7 @@ let buyAmount = 1;
 const planeW = 19, planeH = 12, planeHitPad = 4;
 let planeX = Math.floor(PIXEL_W / 2 - planeW / 2);
 let planeY = 46;
+let astroX = -26; // space station: the astronaut walks the deck
 let frame = 0;
 let scrollX = 0;
 let floaters = [];
@@ -286,11 +326,13 @@ function buildingMap(i) {
 }
 function incomePerSec() {
     const base = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0);
-    const plant = currentMap === 'nuclear' ? plantIncome() : 0;
-    return (base + plant) * incomeMult() * boostMult() * (1 - pollutionPenalty());
+    const plant = currentMap === 'nuclear' ? plantIncome() * nuclearEfficiency() : 0;
+    const turbines = currentMap === 'nuclear' ? turbineIncome() : 0;
+    const laser = currentMap === 'station' ? laserIncome() : 0;
+    return (base + plant + turbines + laser) * incomeMult() * boostMult() * (1 - pollutionPenalty());
 }
 function incomeMult() {
-    return (1 + 0.05 * state.achievements.length) * (1 + 0.25 * state.rebirths);
+    return (1 + 0.05 * state.achievements.length) * (1 + 0.25 * state.rebirths) * commandMult();
 }
 function comboMult() {
     return 1 + combo * 0.1;
@@ -303,12 +345,15 @@ function frenzyActive() {
 }
 // ---- Nuclear power plant ----
 // One plant on the nuclear map: you upgrade it instead of buying buildings.
+// Extra upgrades bolt onto it: fuel rods amplify output, cooling towers scrub
+// the river (dirty water saps efficiency), and steam turbines spin up a
+// second income stream from the plant's waste heat.
 function plantUpgradeCost(level) {
     return Math.floor(1e22 * Math.pow(3, level));
 }
 function plantIncome() {
     if (state.plantLevel <= 0) return 0;
-    return 2e13 * Math.pow(2.5, state.plantLevel);
+    return 2e13 * Math.pow(2.5, state.plantLevel) * (1 + 0.5 * state.fuelLevel);
 }
 function buyPlantUpgrade() {
     const cost = plantUpgradeCost(state.plantLevel);
@@ -317,6 +362,78 @@ function buyPlantUpgrade() {
     state.plantLevel++;
     update();
     showToast('⚛️ Plant upgraded to level ' + state.plantLevel);
+}
+// Fuel rods: +50% plant output per level.
+function fuelUpgradeCost(level) {
+    return Math.floor(5e21 * Math.pow(3.1, level));
+}
+function buyFuelUpgrade() {
+    const cost = fuelUpgradeCost(state.fuelLevel);
+    if (state.money < cost) return;
+    state.money -= cost;
+    state.fuelLevel++;
+    update();
+    showToast('⚛️ Fuel rods enriched to level ' + state.fuelLevel);
+}
+// Cooling towers: scrub river pollution, which saps the plant's efficiency.
+function coolingUpgradeCost(level) {
+    return Math.floor(1.5e22 * Math.pow(3, level));
+}
+function buyCoolingUpgrade() {
+    const cost = coolingUpgradeCost(state.coolingLevel);
+    if (state.money < cost) return;
+    state.money -= cost;
+    state.coolingLevel++;
+    update();
+    showToast('🌊 Cooling towers built to level ' + state.coolingLevel);
+}
+// Steam turbines: a second generator driven by the plant's waste heat.
+function turbineUpgradeCost(level) {
+    return Math.floor(6e21 * Math.pow(2.8, level));
+}
+function turbineIncome() {
+    if (state.turbineLevel <= 0) return 0;
+    return 1e13 * Math.pow(2.3, state.turbineLevel);
+}
+function buyTurbineUpgrade() {
+    const cost = turbineUpgradeCost(state.turbineLevel);
+    if (state.money < cost) return;
+    state.money -= cost;
+    state.turbineLevel++;
+    update();
+    showToast('⚙️ Steam turbines spun up to level ' + state.turbineLevel);
+}
+// ---- Space station: laser + command module ----
+// The space laser is the station's own generator — you level it up just like
+// the nuclear plant. The command module boosts ALL income on every map.
+function laserUpgradeCost(level) {
+    return Math.floor(1e24 * Math.pow(3, level));
+}
+function laserIncome() {
+    if (state.laserLevel <= 0) return 0;
+    return 1e15 * Math.pow(2.5, state.laserLevel);
+}
+function buyLaserUpgrade() {
+    const cost = laserUpgradeCost(state.laserLevel);
+    if (state.money < cost) return;
+    state.money -= cost;
+    state.laserLevel++;
+    update();
+    showToast('🔦 Space Laser upgraded to level ' + state.laserLevel);
+}
+function commandUpgradeCost(level) {
+    return Math.floor(1e26 * Math.pow(5, level));
+}
+function commandMult() {
+    return 1 + 0.1 * state.commandLevel;
+}
+function buyCommandUpgrade() {
+    const cost = commandUpgradeCost(state.commandLevel);
+    if (state.money < cost) return;
+    state.money -= cost;
+    state.commandLevel++;
+    update();
+    showToast('🛰️ Command module upgraded to level ' + state.commandLevel);
 }
 // Pollution is based on total Earth building count, scaled by rebirths.
 // More buildings = more smog. More rebirths = industry intensifies.
@@ -335,7 +452,13 @@ function earthPollutionLevel() {
 function nuclearRiverPollution() {
     const lvl = state.plantLevel;
     if (lvl <= 0) return 0;
-    return Math.min(1, Math.log10(lvl + 1) / 2);
+    // Cooling towers scrub the water — each level washes out more of the stain.
+    return Math.max(0, Math.min(1, Math.log10(lvl + 1) / 2) - 0.06 * state.coolingLevel);
+}
+// Dirty river water saps the plant's cooling efficiency (up to 40% loss).
+// Building cooling towers brings output back up.
+function nuclearEfficiency() {
+    return 1 - nuclearRiverPollution() * 0.4;
 }
 // For backward compat: pollution() now returns earth pollution as a raw score
 function pollution() {
@@ -390,7 +513,7 @@ let metaSig = '';
 
 // Persistent building slots so buying one type never reflows (and visually
 // deletes) buildings of another type. These are synced lazily when counts change.
-let placementSlots = { earth: [[], [], []], mars: [[], [], []], nuclear: [[], [], []] };
+let placementSlots = { earth: [[], [], []], mars: [[], [], []], nuclear: [[], [], []], station: [[], [], []] };
 let placementCounts = buildings.map(() => 0);
 
 function invalidateLayers() { layersDirty = true; tilesDirty = true; }
@@ -436,8 +559,8 @@ function syncPlacements() {
 }
 
 function buildPlacementsFromScratch() {
-    placementSlots = { earth: [[], [], []], mars: [[], [], []], nuclear: [[], [], []] };
-    const cursors = { earth: [0, 0, 0], mars: [0, 0, 0], nuclear: [0, 0, 0] };
+    placementSlots = { earth: [[], [], []], mars: [[], [], []], nuclear: [[], [], []], station: [[], [], []] };
+    const cursors = { earth: [0, 0, 0], mars: [0, 0, 0], nuclear: [0, 0, 0], station: [0, 0, 0] };
     buildings.forEach((b, tier) => {
         const s = BUILDING_STYLES[tier];
         const map = buildingMap(tier);
@@ -593,6 +716,11 @@ function doRebirth() {
     state.clickLevel = 0;
     state.buildings = buildings.map(() => 0);
     state.plantLevel = 0;
+    state.fuelLevel = 0;
+    state.coolingLevel = 0;
+    state.turbineLevel = 0;
+    state.laserLevel = 0;
+    state.commandLevel = 0;
     invalidateLayers();
     save();
     update();
@@ -666,7 +794,8 @@ function createShop() {
         shopItemsEl.appendChild(cpDiv);
     }
 
-    // Nuclear map: a single power plant you upgrade (no building purchases)
+    // Nuclear map: the power plant you upgrade (no building purchases), plus
+    // upgrades that bolt onto it: fuel rods, cooling towers, steam turbines.
     if (currentMap === 'nuclear') {
         const pDiv = document.createElement('div');
         pDiv.className = 'item';
@@ -678,8 +807,73 @@ function createShop() {
         pSub.id = 'plantSub';
         pDiv.appendChild(pSub);
         shopItemsEl.appendChild(pDiv);
+
+        const fDiv = document.createElement('div');
+        fDiv.className = 'item';
+        fuelBtn = document.createElement('button');
+        fuelBtn.onclick = buyFuelUpgrade;
+        fDiv.appendChild(fuelBtn);
+        const fSub = document.createElement('div');
+        fSub.className = 'item-sub';
+        fSub.id = 'fuelSub';
+        fDiv.appendChild(fSub);
+        shopItemsEl.appendChild(fDiv);
+
+        const cDiv = document.createElement('div');
+        cDiv.className = 'item';
+        coolingBtn = document.createElement('button');
+        coolingBtn.onclick = buyCoolingUpgrade;
+        cDiv.appendChild(coolingBtn);
+        const cSub = document.createElement('div');
+        cSub.className = 'item-sub';
+        cSub.id = 'coolingSub';
+        cDiv.appendChild(cSub);
+        shopItemsEl.appendChild(cDiv);
+
+        const tDiv = document.createElement('div');
+        tDiv.className = 'item';
+        turbineBtn = document.createElement('button');
+        turbineBtn.onclick = buyTurbineUpgrade;
+        tDiv.appendChild(turbineBtn);
+        const tSub = document.createElement('div');
+        tSub.className = 'item-sub';
+        tSub.id = 'turbineSub';
+        tDiv.appendChild(tSub);
+        shopItemsEl.appendChild(tDiv);
     } else {
         plantBtn = null;
+        fuelBtn = null;
+        coolingBtn = null;
+        turbineBtn = null;
+    }
+
+    // Station map: the space laser generates income, and the command module
+    // boosts ALL income everywhere. Both level up like the nuclear plant.
+    if (currentMap === 'station') {
+        const lDiv = document.createElement('div');
+        lDiv.className = 'item';
+        laserBtn = document.createElement('button');
+        laserBtn.onclick = buyLaserUpgrade;
+        lDiv.appendChild(laserBtn);
+        const lSub = document.createElement('div');
+        lSub.className = 'item-sub';
+        lSub.id = 'laserSub';
+        lDiv.appendChild(lSub);
+        shopItemsEl.appendChild(lDiv);
+
+        const cDiv = document.createElement('div');
+        cDiv.className = 'item';
+        commandBtn = document.createElement('button');
+        commandBtn.onclick = buyCommandUpgrade;
+        cDiv.appendChild(commandBtn);
+        const cSub = document.createElement('div');
+        cSub.className = 'item-sub';
+        cSub.id = 'commandSub';
+        cDiv.appendChild(cSub);
+        shopItemsEl.appendChild(cDiv);
+    } else {
+        laserBtn = null;
+        commandBtn = null;
     }
 
     const allBuildings = buildings;
@@ -734,16 +928,19 @@ function closeShop() {
     shopBackdrop.classList.remove('open');
 }
 
-// ---- map switching (Earth / Mars / Nuclear) ----
+// ---- map switching (Earth / Mars / Nuclear / Station) ----
 const MARS_COST = 1e7;
 const NUCLEAR_COST = 1e21;
+const STATION_COST = 1e24;
 const NUCLEAR_KEY = 'clih-nuclear-unlocked';
 const MARS_KEY = 'clih-mars-unlocked';
+const STATION_KEY = 'clih-station-unlocked';
 let currentMap = 'earth';
 const earthBtn = document.getElementById('earthBtn');
 const marsBtn = document.getElementById('marsBtn');
 const nuclearBtn = document.getElementById('nuclearBtn');
-const mapBtns = { earth: earthBtn, mars: marsBtn, nuclear: nuclearBtn };
+const stationBtn = document.getElementById('stationBtn');
+const mapBtns = { earth: earthBtn, mars: marsBtn, nuclear: nuclearBtn, station: stationBtn };
 
 function marsUnlocked() {
     return localStorage.getItem(MARS_KEY) === '1';
@@ -751,8 +948,11 @@ function marsUnlocked() {
 function nuclearUnlocked() {
     return localStorage.getItem(NUCLEAR_KEY) === '1';
 }
-const MAP_LABELS = { earth: '🌍 Earth', mars: '🔴 Mars', nuclear: '☢️ Nuclear' };
-const MAP_COSTS = { mars: MARS_COST, nuclear: NUCLEAR_COST };
+function stationUnlocked() {
+    return localStorage.getItem(STATION_KEY) === '1';
+}
+const MAP_LABELS = { earth: '🌍 Earth', mars: '🔴 Mars', nuclear: '☢️ Nuclear', station: '🛰️ Station' };
+const MAP_COSTS = { mars: MARS_COST, nuclear: NUCLEAR_COST, station: STATION_COST };
 
 function switchMap(target) {
     if (target === currentMap) return;
@@ -769,7 +969,8 @@ function buyMapUnlock(target) {
         return;
     }
     state.money -= cost;
-    localStorage.setItem(target === 'mars' ? MARS_KEY : NUCLEAR_KEY, '1');
+    const key = target === 'mars' ? MARS_KEY : target === 'nuclear' ? NUCLEAR_KEY : STATION_KEY;
+    localStorage.setItem(key, '1');
     currentMap = target;
     showToast(MAP_LABELS[target] + ' unlocked!');
     invalidateLayers();
@@ -783,17 +984,19 @@ function goToMap(target) {
         buyMapUnlock('mars');
     } else if (target === 'nuclear' && !nuclearUnlocked()) {
         buyMapUnlock('nuclear');
+    } else if (target === 'station' && !stationUnlocked()) {
+        buyMapUnlock('station');
     } else {
         switchMap(target);
     }
     updateMapBtn();
 }
 function updateMapBtn() {
-    ['earth', 'mars', 'nuclear'].forEach(m => {
+    ['earth', 'mars', 'nuclear', 'station'].forEach(m => {
         const btn = mapBtns[m];
         if (!btn) return;
         const isCurrent = currentMap === m;
-        const locked = m !== 'earth' && !(m === 'mars' ? marsUnlocked() : nuclearUnlocked());
+        const locked = m !== 'earth' && !(m === 'mars' ? marsUnlocked() : m === 'nuclear' ? nuclearUnlocked() : stationUnlocked());
         btn.textContent = locked ? MAP_LABELS[m] + ' ($' + fmt(MAP_COSTS[m]) + ')' : MAP_LABELS[m];
         btn.classList.toggle('active', isCurrent);
         btn.classList.toggle('locked', locked);
@@ -802,6 +1005,7 @@ function updateMapBtn() {
 if (earthBtn) earthBtn.onclick = () => goToMap('earth');
 if (marsBtn) marsBtn.onclick = () => goToMap('mars');
 if (nuclearBtn) nuclearBtn.onclick = () => goToMap('nuclear');
+if (stationBtn) stationBtn.onclick = () => goToMap('station');
 updateMapBtn();
 
 let saveMigrated = false;
@@ -812,10 +1016,10 @@ function migrateSave() {
         const raw = localStorage.getItem(SAVE_KEY);
         if (!raw) return;
         const data = JSON.parse(raw);
-        // Factory was inserted at index 5; older saves kept the industrial
-        // tiers one slot earlier. loadFrom already padded the array, so
-        // splice the new slot in and drop the trailing zero.
-        if (Array.isArray(data.buildings) && data.buildings.length < buildings.length) {
+        // Factory was inserted at index 5; only saves that predate it (exactly
+        // 20 building entries) need the slot spliced in. Anything else is
+        // safely padded with zeros at the end by loadFrom.
+        if (Array.isArray(data.buildings) && data.buildings.length === 20) {
             state.buildings.splice(5, 0, 0);
             state.buildings.length = buildings.length;
             save();
@@ -831,6 +1035,8 @@ function update() {
     incomeEl.textContent = '$' + fmt(incomePerSec()) + ' / sec';
     hintEl.textContent = currentMap === 'nuclear'
         ? 'The nuclear world is passive — upgrade the plant and watch the river turn green.'
+        : currentMap === 'station'
+        ? 'Click the astronaut to earn money. Upgrade the laser and the command module.'
         : 'Click the plane to earn money. Buy buildings to grow your city.';
     canvas.style.cursor = currentMap === 'nuclear' ? 'default' : 'pointer';
 
@@ -845,7 +1051,47 @@ function update() {
         plantBtn.textContent = '⚛️ Upgrade Plant (lvl ' + state.plantLevel + ') - $' + fmt(cost);
         plantBtn.disabled = state.money < cost;
         const pSub = document.getElementById('plantSub');
-        if (pSub) pSub.textContent = 'produces $' + fmt(plantIncome()) + '/sec · river pollution ' + Math.round(nuclearRiverPollution() * 100) + '%';
+        const eff = nuclearEfficiency();
+        let pText = 'produces $' + fmt(plantIncome() * eff) + '/sec';
+        if (state.fuelLevel > 0) pText += ' (×' + (1 + 0.5 * state.fuelLevel) + ' rods)';
+        if (eff < 1) pText += ' · −' + Math.round((1 - eff) * 100) + '% river penalty';
+        if (pSub) pSub.textContent = pText;
+    }
+    if (fuelBtn) {
+        const cost = fuelUpgradeCost(state.fuelLevel);
+        fuelBtn.textContent = '⚛️ Fuel Rods (lvl ' + state.fuelLevel + ') - $' + fmt(cost);
+        fuelBtn.disabled = state.money < cost;
+        const fSub = document.getElementById('fuelSub');
+        if (fSub) fSub.textContent = '+' + (state.fuelLevel * 50) + '% plant output';
+    }
+    if (coolingBtn) {
+        const cost = coolingUpgradeCost(state.coolingLevel);
+        coolingBtn.textContent = '🌊 Cooling Towers (lvl ' + state.coolingLevel + ') - $' + fmt(cost);
+        coolingBtn.disabled = state.money < cost;
+        const cSub = document.getElementById('coolingSub');
+        if (cSub) cSub.textContent = 'river pollution ' + Math.round(nuclearRiverPollution() * 100) + '%';
+    }
+    if (turbineBtn) {
+        const cost = turbineUpgradeCost(state.turbineLevel);
+        turbineBtn.textContent = '⚙️ Steam Turbines (lvl ' + state.turbineLevel + ') - $' + fmt(cost);
+        turbineBtn.disabled = state.money < cost;
+        const tSub = document.getElementById('turbineSub');
+        if (tSub) tSub.textContent = 'produces $' + fmt(turbineIncome()) + '/sec';
+    }
+
+    if (laserBtn) {
+        const cost = laserUpgradeCost(state.laserLevel);
+        laserBtn.textContent = '🔦 Space Laser (lvl ' + state.laserLevel + ') - $' + fmt(cost);
+        laserBtn.disabled = state.money < cost;
+        const lSub = document.getElementById('laserSub');
+        if (lSub) lSub.textContent = 'produces $' + fmt(laserIncome()) + '/sec';
+    }
+    if (commandBtn) {
+        const cost = commandUpgradeCost(state.commandLevel);
+        commandBtn.textContent = '🛰️ Command Module (lvl ' + state.commandLevel + ') - $' + fmt(cost);
+        commandBtn.disabled = state.money < cost;
+        const cSub = document.getElementById('commandSub');
+        if (cSub) cSub.textContent = '+' + (state.commandLevel * 10) + '% income everywhere';
     }
 
     buildings.forEach((b, i) => {
@@ -877,7 +1123,7 @@ function updateMeta() {
     const owned = state.buildings.reduce((a, b) => a + b, 0);
     // Only re-render stats/achievements when something actually changed;
     // update() runs 10×/sec so rebuilding this HTML every tick is wasteful.
-    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.rebirths, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution(), earthPollution(), currentMap].join(',');
+    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.rebirths, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution(), earthPollution(), currentMap, state.laserLevel, state.commandLevel, state.fuelLevel, state.coolingLevel, state.turbineLevel, stationUnlocked()].join(',');
     if (sig === metaSig) return;
     metaSig = sig;
 
@@ -891,7 +1137,12 @@ function updateMeta() {
         '<div><span class="stat-label">Frenzies:</span> ' + state.frenziesTriggered + '</div>' +
         '<div><span class="stat-label">Boosts:</span> ' + state.boostsCaught + '</div>' +
         '<div><span class="stat-label">Income bonus:</span> +' + Math.round((incomeMult() - 1) * 100) + '%</div>' +
-        '<div><span class="stat-label">Pollution:</span> ' + pollution() + '% (-' + Math.round(pollutionPenalty() * 100) + '% income)</div>';
+        '<div><span class="stat-label">Pollution:</span> ' + pollution() + '% (-' + Math.round(pollutionPenalty() * 100) + '% income)</div>' +
+        '<div><span class="stat-label">Space laser:</span> lvl ' + state.laserLevel + ' ($' + fmt(laserIncome()) + '/sec)</div>' +
+        '<div><span class="stat-label">Command module:</span> lvl ' + state.commandLevel + ' (+' + (state.commandLevel * 10) + '% all income)</div>' +
+        '<div><span class="stat-label">Fuel rods:</span> lvl ' + state.fuelLevel + ' (+' + (state.fuelLevel * 50) + '% plant)</div>' +
+        '<div><span class="stat-label">Cooling towers:</span> lvl ' + state.coolingLevel + ' (river ' + Math.round(nuclearRiverPollution() * 100) + '%)</div>' +
+        '<div><span class="stat-label">Steam turbines:</span> lvl ' + state.turbineLevel + ' ($' + fmt(turbineIncome()) + '/sec)</div>';
 
 
     achievementsEl.innerHTML =
@@ -1151,6 +1402,124 @@ function drawFactory(c, x, y, w, h, body, dark) {
     c.fillRect(x + Math.floor(w / 2) - 3, y + h - 6, 6, 6);
 }
 
+function drawFusion(c, x, y, w, h, body, dark) {
+    // toroidal fusion reactor on a plinth with a glowing plasma ring
+    c.fillStyle = dark;
+    c.fillRect(x + 1, y + h - 4, w - 2, 4);
+    c.fillStyle = body;
+    c.fillRect(x + 4, y + h - 8, w - 8, 4);
+    c.fillStyle = '#ffd23f';
+    c.fillRect(x + Math.floor(w / 2) - 6, y + h - 14, 12, 5);
+    c.fillStyle = '#ff9f1c';
+    c.fillRect(x + Math.floor(w / 2) - 3, y + h - 12, 6, 1);
+    c.fillStyle = '#ffe9b0';
+    c.fillRect(x + Math.floor(w / 2) - 7, y + h - 18, 14, 4);
+    c.fillStyle = '#b03a2a';
+    for (let sx = x + 2; sx < x + w - 2; sx += 6) c.fillRect(sx, y + h - 4, 3, 1);
+}
+
+function drawArcology(c, x, y, w, h, body, dark) {
+    // stepped mega-tower with terraced greenery
+    const steps = 4;
+    const stepH = Math.floor(h / steps);
+    for (let s = 0; s < steps; s++) {
+        const sw = Math.max(8, w - s * 4);
+        const sx = x + Math.floor((w - sw) / 2);
+        const sy = y + s * stepH;
+        c.fillStyle = body;
+        c.fillRect(sx, sy, sw, stepH);
+        c.fillStyle = dark;
+        c.fillRect(sx, sy, sw, 1);
+        c.fillStyle = s % 2 ? '#4f9d69' : '#6bbf78';
+        c.fillRect(sx + 1, sy + 2, sw - 2, 2);
+    }
+    c.fillStyle = '#999';
+    c.fillRect(x + Math.floor(w / 2) - 1, y - 4, 2, 4);
+}
+
+function drawSkyGarden(c, x, y, w, h, body, dark) {
+    // slim tower with a glass crown full of plants
+    c.fillStyle = body;
+    c.fillRect(x + 4, y + 6, w - 8, h - 6);
+    c.fillStyle = dark;
+    c.fillRect(x + 4, y + 6, w - 8, 2);
+    c.fillStyle = '#a8e8ff';
+    c.fillRect(x + 2, y, w - 4, 10);
+    c.fillStyle = '#7fd4a0';
+    c.fillRect(x + 3, y + 2, 3, 3);
+    c.fillRect(x + w - 6, y + 2, 3, 3);
+    c.fillRect(x + Math.floor(w / 2) - 1, y + 3, 3, 5);
+    c.fillStyle = '#ffe9b0';
+    for (let wy = y + 10; wy < y + h - 4; wy += 5) {
+        c.fillRect(x + 7, wy, 3, 2);
+        c.fillRect(x + w - 10, wy, 3, 2);
+    }
+    c.fillStyle = '#4f9d69';
+    c.fillRect(x + 5, y + 8, 1, 6);
+    c.fillRect(x + w - 6, y + 8, 1, 6);
+}
+
+function drawDustFarm(c, x, y, w, h, body, dark) {
+    // greenhouse rows on red Martian dirt
+    c.fillStyle = body;
+    c.fillRect(x + 1, y + h - 4, w - 2, 4);
+    c.fillStyle = dark;
+    c.fillRect(x + 2, y + h - 7, w - 4, 3);
+    c.fillStyle = '#9fe8ff';
+    for (let gx = x + 3; gx < x + w - 6; gx += 7) {
+        c.fillRect(gx, y + h - 10, 5, 3);
+        c.fillRect(gx + 1, y + h - 12, 3, 2);
+    }
+    c.fillStyle = '#6bbf78';
+    for (let gx = x + 4; gx < x + w - 5; gx += 7) {
+        c.fillRect(gx + 1, y + h - 9, 1, 2);
+    }
+    c.fillStyle = '#8a5a38';
+    c.fillRect(x + 2, y + h - 6, 3, 2);
+}
+
+function drawIceMiner(c, x, y, w, h, body, dark) {
+    // drill rig over an ice seam with a delivery pipe
+    c.fillStyle = body;
+    c.fillRect(x + 1, y + h - 4, w - 2, 4);
+    c.fillStyle = '#d6f7ff';
+    c.fillRect(x + 3, y + h - 6, w - 6, 2);
+    c.fillStyle = '#9aa0a8';
+    c.fillRect(x + Math.floor(w / 2) - 1, y + 2, 2, h - 6);
+    c.fillStyle = dark;
+    c.fillRect(x + Math.floor(w / 2) - 4, y, 8, 3);
+    c.fillRect(x + Math.floor(w / 2) - 3, y + 3, 6, 1);
+    c.fillStyle = '#5c6470';
+    c.fillRect(x + Math.floor(w / 2) - 1, y + h - 8, 2, 2);
+    c.fillStyle = '#bfe9ff';
+    c.fillRect(x + 6, y + h - 5, 3, 2);
+    c.fillRect(x + w - 9, y + h - 6, 2, 3);
+    c.fillStyle = '#7a8a96';
+    c.fillRect(x + w - 8, y + 8, 2, h - 14);
+    c.fillRect(x + w - 10, y + 6, 6, 3);
+}
+
+function drawForge(c, x, y, w, h, body, dark) {
+    // volcanic foundry: furnace mouth, ember sparks, smokestack
+    c.fillStyle = body;
+    c.fillRect(x + 2, y + 8, w - 4, h - 8);
+    c.fillStyle = dark;
+    c.fillRect(x + 2, y + 8, w - 4, 2);
+    c.fillStyle = '#ff9f1c';
+    c.fillRect(x + Math.floor(w / 2) - 4, y + h - 12, 8, 8);
+    c.fillStyle = '#ffd23f';
+    c.fillRect(x + Math.floor(w / 2) - 2, y + h - 10, 4, 4);
+    c.fillStyle = '#6a6a72';
+    c.fillRect(x + 5, y - 8, 4, 16);
+    c.fillStyle = '#55555e';
+    c.fillRect(x + 4, y - 9, 6, 2);
+    c.fillStyle = '#ff9f1c';
+    c.fillRect(x + 6, y - 12, 1, 1);
+    c.fillRect(x + 4, y - 15, 1, 1);
+    c.fillStyle = '#b03a2a';
+    for (let sx = x + 2; sx < x + w - 4; sx += 5) c.fillRect(sx, y + h - 3, 3, 1);
+}
+
 function drawBuilding(c, kind, x, y, w, h, body, dark) {
     if (kind === 'warehouse') return drawWarehouse(c, x, y, w, h, body, dark);
     if (kind === 'mall') return drawMall(c, x, y, w, h, body, dark);
@@ -1166,6 +1535,12 @@ function drawBuilding(c, kind, x, y, w, h, body, dark) {
     if (kind === 'terraform') return drawTerraform(c, x, y, w, h, body, dark);
     if (kind === 'quantum') return drawQuantum(c, x, y, w, h, body, dark);
     if (kind === 'factory') return drawFactory(c, x, y, w, h, body, dark);
+    if (kind === 'fusion') return drawFusion(c, x, y, w, h, body, dark);
+    if (kind === 'arcology') return drawArcology(c, x, y, w, h, body, dark);
+    if (kind === 'skygarden') return drawSkyGarden(c, x, y, w, h, body, dark);
+    if (kind === 'dustfarm') return drawDustFarm(c, x, y, w, h, body, dark);
+    if (kind === 'iceminer') return drawIceMiner(c, x, y, w, h, body, dark);
+    if (kind === 'forge') return drawForge(c, x, y, w, h, body, dark);
     drawBrickBuilding(c, x, y, w, h, body, dark);
 }
 
@@ -1328,7 +1703,7 @@ function drawEarthPollution() {
 
 function drawNuclearReactor(x, y, gold) {
     const lvl = state.plantLevel;
-    const glow = Math.min(1, lvl / 12);
+    const glow = Math.min(1, lvl / 12 + state.fuelLevel * 0.04);
     const baseY = PIXEL_H - 8;           // ground line the plant stands on
     const bodyL = '#c9c9d2';
     const bodyD = '#7e7e88';
@@ -1340,8 +1715,9 @@ function drawNuclearReactor(x, y, gold) {
     ctx.fillRect(2, baseY, 108, 3);
 
     // ---- cooling towers (hyperboloid silhouettes) — upgrades bolt on more ----
-    function coolingTower(cx, topY, h) {
-        for (let yy = topY; yy < baseY; yy++) {
+    function coolingTower(cx, topY, h, b) {
+        const ground = b === undefined ? baseY : b;
+        for (let yy = topY; yy < ground; yy++) {
             const t = Math.min(1, (yy - topY) / h);
             let hw;
             if (t < 0.5) hw = 8 - (8 - 5) * (t / 0.5);
@@ -1385,6 +1761,16 @@ function drawNuclearReactor(x, y, gold) {
         ctx.fillStyle = 'rgba(140,255,140,' + (0.25 + glow * 0.4).toFixed(2) + ')';
         ctx.fillRect(44, baseY - 13, 13, 10);
     }
+    // fuel rods visible through the core window — more bundles as you enrich
+    if (state.fuelLevel >= 1) {
+        const rods = Math.min(4, 1 + Math.floor(state.fuelLevel / 3));
+        for (let i = 0; i < rods; i++) {
+            const rx = 48 + i * 2;
+            const flick = (frame + i * 7) % 6 < 3;
+            ctx.fillStyle = flick ? (i % 2 ? '#ffd23f' : '#8dffc9') : (i % 2 ? '#a86a1e' : '#3f8a5f');
+            ctx.fillRect(rx, baseY - 10, 1, 4);
+        }
+    }
     // radiation trefoil on the building wall
     ctx.fillStyle = '#ffb400';
     ctx.fillRect(63, baseY - 10, 2, 2);
@@ -1396,6 +1782,48 @@ function drawNuclearReactor(x, y, gold) {
     if (lvl >= 1) coolingTower(30, 88, 54);
     if (lvl >= 5) coolingTower(12, 62, 80);
     if (lvl >= 10) coolingTower(46, 106, 36);
+    // cooling-tower upgrades march a scrubber row along the bank toward the
+    // river, above the drain line. Taller towers = cleaner water.
+    if (state.coolingLevel >= 1) coolingTower(118, 104, 30, 134);
+    if (state.coolingLevel >= 3) coolingTower(132, 92, 42, 134);
+    if (state.coolingLevel >= 5) coolingTower(146, 82, 52, 134);
+    if (state.coolingLevel >= 8) coolingTower(160, 94, 40, 134);
+    if (state.coolingLevel >= 12) coolingTower(174, 100, 34, 134);
+    if (state.coolingLevel >= 1) {
+        // clean white steam drifting off the scrubber towers
+        const plume = Math.min(3, 1 + Math.floor(state.coolingLevel / 3));
+        for (let i = 0; i < plume; i++) {
+            const px = 126 + i * 15 + ((frame * 0.3 + i * 5) % 3);
+            const py = 74 - i * 5 - ((frame * 0.5 + i * 3) % 4);
+            ctx.fillStyle = 'rgba(235, 245, 250, ' + (0.55 - i * 0.13).toFixed(2) + ')';
+            ctx.fillRect(px, py, 6, 3);
+            ctx.fillRect(px + 1, py - 1, 4, 2);
+        }
+    }
+    // steam turbine hall bolted to the right of the reactor — blades spin
+    // faster the more turbines you have
+    if (state.turbineLevel >= 1) {
+        ctx.fillStyle = '#606068';
+        ctx.fillRect(90, baseY, 26, 3);
+        ctx.fillStyle = '#8a8a96';
+        ctx.fillRect(90, baseY - 14, 22, 14);
+        ctx.fillStyle = '#6a6a76';
+        ctx.fillRect(90, baseY - 14, 22, 2);
+        ctx.fillStyle = '#55555e';
+        for (let wx = 92; wx < 112; wx += 7) ctx.fillRect(wx, baseY - 11, 5, 1);
+        const turb = Math.min(3, 1 + Math.floor(state.turbineLevel / 4));
+        const spin = (frame * (0.06 + state.turbineLevel * 0.012)) % 2;
+        for (let i = 0; i < turb; i++) {
+            const cx = 96 + i * 7;
+            const cy = baseY - 7;
+            const off = spin < 1 ? -1 : 1;
+            ctx.fillStyle = '#c9c9d2';
+            ctx.fillRect(cx - 3, cy + off, 6, 1);
+            ctx.fillRect(cx - off, cy - 2, 1, 4);
+            ctx.fillStyle = '#ffb400';
+            ctx.fillRect(cx, cy, 1, 1);
+        }
+    }
     if (lvl >= 20) {
         // auxiliary smokestack beside the main one
         ctx.fillStyle = bodyL;
@@ -1534,6 +1962,174 @@ function drawNuclearScene() {
     ctx.fillRect(0, PIXEL_H - 2, PIXEL_W, 2);
 }
 
+function drawStationInterior() {
+    // back wall panels
+    ctx.fillStyle = '#2b3550';
+    ctx.fillRect(0, 0, PIXEL_W, 90);
+    ctx.fillStyle = '#232c44';
+    for (let x = 20; x < PIXEL_W; x += 40) ctx.fillRect(x, 0, 2, 90);
+    for (let y = 30; y < 90; y += 30) ctx.fillRect(0, y, PIXEL_W, 2);
+    // ceiling lights
+    ctx.fillStyle = '#9fd8ff';
+    for (let x = 26; x < PIXEL_W - 12; x += 48) ctx.fillRect(x, 5, 14, 2);
+
+    // big viewport window looking out at space
+    ctx.fillStyle = '#0a0e1c';
+    ctx.fillRect(48, 12, 224, 72);
+    ctx.fillStyle = '#131a30';
+    ctx.fillRect(44, 8, 232, 80);
+    // stars
+    for (let i = 0; i < 42; i++) {
+        const sx = 50 + ((i * 53 + 7) % 220);
+        const sy = 10 + ((i * 29 + 11) % 68);
+        ctx.fillStyle = i % 5 === 0 ? '#ffd9a0' : '#dce6ff';
+        ctx.fillRect(sx, sy, 1, 1);
+    }
+    // Earth below the station
+    const ecx = 160, ecy = 74, er = 12;
+    ctx.fillStyle = '#2f6fd0';
+    for (let dy = -er; dy <= er; dy++) {
+        for (let dx = -er; dx <= er; dx++) {
+            if (dx * dx + dy * dy <= er * er) ctx.fillRect(ecx + dx, ecy + dy, 1, 1);
+        }
+    }
+    ctx.fillStyle = '#3fa07a';
+    ctx.fillRect(ecx - 4, ecy - 4, 3, 5);
+    ctx.fillRect(ecx + 3, ecy + 1, 3, 4);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    for (let i = 0; i < 3; i++) ctx.fillRect(ecx - 7 + i * 7, ecy - 2, 3, 2);
+    // window struts
+    ctx.fillStyle = '#3a4a6e';
+    ctx.fillRect(160, 8, 4, 80);
+    ctx.fillRect(44, 8, 4, 80);
+    ctx.fillRect(276, 8, 4, 80);
+
+    // space laser firing out of the viewport — visible once you own it
+    if (state.laserLevel >= 1) {
+        const firing = (frame + 60) % 240 < 20;
+        ctx.fillStyle = firing ? 'rgba(77, 255, 160, 0.4)' : 'rgba(77, 255, 160, 0.12)';
+        ctx.fillRect(50, 30, 218, 40);
+        ctx.fillStyle = firing ? '#b6ffd8' : '#3fd0a0';
+        ctx.fillRect(50, 47, 218, 3);
+        ctx.fillRect(50, 52, 218, 1);
+    }
+
+    // command module upgrades light up equipment racks on the side walls
+    if (state.commandLevel >= 1) {
+        const lit = Math.min(6, state.commandLevel);
+        for (let i = 0; i < lit; i++) {
+            const x = i % 2 === 0 ? 8 : 292;
+            const y = 14 + Math.floor(i / 2) * 22;
+            ctx.fillStyle = '#38517e';
+            ctx.fillRect(x, y, 12, 14);
+            ctx.fillStyle = '#4dffa0';
+            ctx.fillRect(x + 4, y + 4 + ((frame + i * 11) % 8 < 4 ? 0 : 4), 2, 2);
+            ctx.fillStyle = '#ffd23f';
+            ctx.fillRect(x + 8, y + 9, 2, 2);
+        }
+    }
+
+    // console deck below the window
+    ctx.fillStyle = '#232c44';
+    ctx.fillRect(0, 90, PIXEL_W, 16);
+    ctx.fillStyle = '#151c30';
+    ctx.fillRect(0, 90, PIXEL_W, 2);
+    // screens
+    ctx.fillStyle = '#0e1a30';
+    ctx.fillRect(118, 94, 84, 9);
+    ctx.fillStyle = '#3fd0ff';
+    ctx.fillRect(120, 96, 22, 2);
+    ctx.fillRect(124, 99, 34, 1);
+    ctx.fillStyle = '#4dffa0';
+    ctx.fillRect(150, 99, 12, 1);
+    // blinking console lights
+    for (let i = 0; i < 8; i++) {
+        const lx = 12 + i * 40;
+        const on = (frame + i * 7) % 30 < 14;
+        ctx.fillStyle = on ? (i % 2 ? '#4dffa0' : '#ffd23f') : '#2a3550';
+        ctx.fillRect(lx, 99, 3, 2);
+    }
+
+    // deck floor with perspective panel lines
+    ctx.fillStyle = '#3c4764';
+    ctx.fillRect(0, 106, PIXEL_W, 44);
+    ctx.fillStyle = '#2c3550';
+    ctx.fillRect(0, 106, PIXEL_W, 2);
+    for (let y = 112; y < PIXEL_H; y += 7) {
+        ctx.fillStyle = '#313b56';
+        ctx.fillRect(0, y, PIXEL_W, 1);
+    }
+    for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = '#2c3550';
+        ctx.fillRect(32 + i * 64, 106, 2, 44);
+    }
+    // hazard stripe along the near edge
+    ctx.fillStyle = '#3a2c14';
+    ctx.fillRect(0, PIXEL_H - 3, PIXEL_W, 3);
+    ctx.fillStyle = '#ffb400';
+    for (let x = 0; x < PIXEL_W; x += 16) ctx.fillRect(x, PIXEL_H - 3, 8, 1);
+}
+
+function drawAstronaut(x, y, gold) {
+    const suit = gold ? '#ffe08a' : '#e8eef7';
+    const accent = gold ? '#e8a23a' : '#4a7dbd';
+    const dark = gold ? '#a86a1e' : '#243c60';
+    // soft shadow on the deck
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.fillRect(x, y, 15, 2);
+    // legs — walk cycle
+    const step = Math.floor(frame / 7) % 2;
+    ctx.fillStyle = dark;
+    if (step === 0) {
+        ctx.fillRect(x + 3, y - 5, 3, 5);
+        ctx.fillRect(x + 9, y - 3, 3, 3);
+    } else {
+        ctx.fillRect(x + 3, y - 3, 3, 3);
+        ctx.fillRect(x + 9, y - 5, 3, 5);
+    }
+    // boots
+    ctx.fillStyle = '#c46a3a';
+    ctx.fillRect(x + 2, y - 1, 4, 1);
+    ctx.fillRect(x + 9, y - 1, 4, 1);
+    // torso
+    ctx.fillStyle = suit;
+    ctx.fillRect(x + 2, y - 13, 11, 8);
+    ctx.fillStyle = accent;
+    ctx.fillRect(x + 2, y - 12, 11, 2);
+    ctx.fillRect(x + 3, y - 10, 2, 3);
+    ctx.fillRect(x + 10, y - 10, 2, 3);
+    // backpack + arms swinging with the walk
+    ctx.fillStyle = '#8a94a8';
+    ctx.fillRect(x, y - 12, 2, 7);
+    ctx.fillStyle = suit;
+    if (step === 0) {
+        ctx.fillRect(x + 1, y - 12, 2, 4);
+        ctx.fillRect(x + 12, y - 11, 2, 3);
+    } else {
+        ctx.fillRect(x + 1, y - 11, 2, 3);
+        ctx.fillRect(x + 12, y - 12, 2, 4);
+    }
+    // helmet
+    ctx.fillStyle = suit;
+    ctx.fillRect(x + 3, y - 19, 8, 6);
+    ctx.fillRect(x + 5, y - 21, 5, 3);
+    ctx.fillStyle = '#12233a';
+    ctx.fillRect(x + 5, y - 18, 4, 3);
+    ctx.fillStyle = '#9fd8ff';
+    ctx.fillRect(x + 6, y - 17, 2, 1);
+    // antenna
+    ctx.fillStyle = '#8a94a8';
+    ctx.fillRect(x + 9, y - 23, 1, 3);
+    ctx.fillStyle = '#ff5c5c';
+    if (frame % 20 < 10) ctx.fillRect(x + 9, y - 24, 2, 1);
+    // golden frenzy halo
+    if (gold) {
+        ctx.fillStyle = 'rgba(255, 210, 63, 0.55)';
+        ctx.fillRect(x - 1, y - 23, 17, 1);
+        ctx.fillRect(x - 1, y, 17, 1);
+    }
+}
+
 function drawClickHint() {
     const now = performance.now();
     if (now - lastPlaneClick < 5000) return;
@@ -1577,6 +2173,9 @@ function drawCombo() {
     if (currentMap === 'nuclear') {
         cx = 100;
         cy = 52;
+    } else if (currentMap === 'station') {
+        cx = Math.floor(planeX + 8);
+        cy = planeY - 30;
     } else {
         cx = Math.floor(planeX + planeW / 2);
         cy = planeY + planeH + 7;
@@ -1699,6 +2298,20 @@ function drawTowerBeacons() {
 }
 
 function drawScene() {
+    // The space station is a self-contained interior — no scrolling city, no
+    // pollution, no flyers. An astronaut walks the deck instead.
+    if (currentMap === 'station') {
+        drawStationInterior();
+        astroX += 0.55;
+        if (astroX > PIXEL_W + 24) astroX = -26;
+        planeX = Math.floor(astroX);
+        planeY = 124 + Math.round(Math.sin(frame * 0.2) * 1);
+        drawAstronaut(planeX, planeY, frenzyActive());
+        drawClickHint();
+        drawCombo();
+        drawFloaters();
+        return;
+    }
     // ease pollution toward its target so the visuals shift smoothly
     const pollTarget = currentMap === 'earth' ? earthPollutionLevel() : 0;
     easedPollution += (pollTarget - easedPollution) * 0.04;
@@ -1845,6 +2458,10 @@ function drawScene() {
     }
 
     // floating +$ text (crits, balloon payouts, and boosts are bigger + tinted)
+    drawFloaters();
+}
+
+function drawFloaters() {
     floaters.forEach(f => {
         const big = !!f.crit || !!f.gold;
         const fontPx = big ? 10 : 9;
@@ -1873,7 +2490,7 @@ function animate() {
         frenzy.active = false;
         frenzy.nextAt = now + 75000 + Math.random() * 45000;
     }
-    if (!frenzy.active && currentMap !== 'nuclear' && now >= frenzy.nextAt) {
+    if (!frenzy.active && currentMap !== 'nuclear' && currentMap !== 'station' && now >= frenzy.nextAt) {
         frenzy.active = true;
         frenzy.endsAt = now + FRENZY_DURATION;
         state.frenziesTriggered++;
@@ -1885,13 +2502,13 @@ function animate() {
         boost.active = false;
         nextBoostAt = now + 180000 + Math.random() * 120000;
     }
-    if (!boostPlane && !boost.active && currentMap !== 'nuclear' && now >= nextBoostAt) spawnBoostPlane();
+    if (!boostPlane && !boost.active && currentMap !== 'nuclear' && currentMap !== 'station' && now >= nextBoostAt) spawnBoostPlane();
     if (boostPlane) {
         boostPlane.x -= 0.8;
         if (boostPlane.x < -20) boostPlane = null;
     }
 
-    if (!balloon && currentMap !== 'nuclear' && now >= nextBalloonAt) spawnBalloon();
+    if (!balloon && currentMap !== 'nuclear' && currentMap !== 'station' && now >= nextBalloonAt) spawnBalloon();
     if (balloon) {
         balloon.x -= 0.65;
         if (balloon.x < -24) balloon = null;
@@ -1943,7 +2560,9 @@ canvas.addEventListener('click', (e) => {
         }
     }
 
-    if (px >= planeX && px <= planeX + planeW && py >= planeY - planeHitPad && py <= planeY + planeH + planeHitPad) {
+    const hitW = currentMap === 'station' ? 15 : planeW;
+    const hitH = currentMap === 'station' ? 24 : planeH;
+    if (px >= planeX && px <= planeX + hitW && py >= planeY - planeHitPad && py <= planeY + hitH + planeHitPad) {
         clickPlane();
     }
 });
@@ -1972,7 +2591,7 @@ document.addEventListener('keydown', (e) => {
 
 document.getElementById('resetBtn').onclick = () => {
     if (!confirm('Reset all progress? This cannot be undone.')) return;
-    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), plantLevel: 0, totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
+    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), plantLevel: 0, fuelLevel: 0, coolingLevel: 0, turbineLevel: 0, laserLevel: 0, commandLevel: 0, totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
     combo = 0;
     comboEndsAt = 0;
     frenzy.active = false;
@@ -1996,6 +2615,11 @@ function loadFrom(data) {
     while (state.buildings.length < buildings.length) state.buildings.push(0);
     state.buildings.length = buildings.length;
     state.plantLevel = data.plantLevel ?? 0;
+    state.fuelLevel = data.fuelLevel ?? 0;
+    state.coolingLevel = data.coolingLevel ?? 0;
+    state.turbineLevel = data.turbineLevel ?? 0;
+    state.laserLevel = data.laserLevel ?? 0;
+    state.commandLevel = data.commandLevel ?? 0;
     state.totalClicks = data.totalClicks ?? 0;
     state.totalEarned = data.totalEarned ?? 0;
     state.achievements = Array.isArray(data.achievements) ? data.achievements : [];
@@ -2025,9 +2649,17 @@ function applyOfflineEarnings() {
     // The nuclear plant keeps producing while you're away — that's the whole
     // point of it — even if you didn't leave the game on the nuclear world.
     const plantOffline = currentMap !== 'nuclear' && state.plantLevel > 0
-        ? plantIncome() * incomeMult() * boostMult() * (1 - pollutionPenalty())
+        ? plantIncome() * nuclearEfficiency() * incomeMult() * boostMult() * (1 - pollutionPenalty())
         : 0;
-    const earned = (incomePerSec() + plantOffline) * capped * 0.5;
+    // Steam turbines keep spinning while you're away too.
+    const turbineOffline = currentMap !== 'nuclear' && state.turbineLevel > 0
+        ? turbineIncome() * incomeMult() * boostMult() * (1 - pollutionPenalty())
+        : 0;
+    // The space laser also keeps firing while you're away.
+    const laserOffline = currentMap !== 'station' && state.laserLevel > 0
+        ? laserIncome() * incomeMult() * boostMult() * (1 - pollutionPenalty())
+        : 0;
+    const earned = (incomePerSec() + plantOffline + turbineOffline + laserOffline) * capped * 0.5;
     if (earned < 1) return;
     state.money += earned;
     state.totalEarned += earned;
