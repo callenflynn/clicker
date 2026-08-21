@@ -85,6 +85,10 @@ let state = {
     turbineLevel: 0,
     laserLevel: 0,
     commandLevel: 0,
+    controlLevel: 0,
+    hydrogenLevel: 0,
+    solarLevel: 0,
+    targetingLevel: 0,
     totalClicks: 0,
     totalEarned: 0,
     achievements: [],
@@ -162,7 +166,15 @@ const ACHIEVEMENTS = [
     { id: 'laser_1', name: 'Pew Pew', desc: 'Upgrade the Space Laser to level 1', check: s => s.laserLevel >= 1 },
     { id: 'laser_10', name: 'Death Ray', desc: 'Upgrade the Space Laser to level 10', check: s => s.laserLevel >= 10 },
     { id: 'command_1', name: 'Bridge Officer', desc: 'Upgrade the Command Module to level 1', check: s => s.commandLevel >= 1 },
-    { id: 'command_10', name: 'Fleet Admiral', desc: 'Upgrade the Command Module to level 10', check: s => s.commandLevel >= 10 }
+    { id: 'command_10', name: 'Fleet Admiral', desc: 'Upgrade the Command Module to level 10', check: s => s.commandLevel >= 10 },
+    { id: 'control_1', name: 'Reactor Whisperer', desc: 'Upgrade Control Rods to level 1', check: s => s.controlLevel >= 1 },
+    { id: 'control_10', name: 'Boron King', desc: 'Upgrade Control Rods to level 10', check: s => s.controlLevel >= 10 },
+    { id: 'hydrogen_1', name: 'Clean Fuel', desc: 'Upgrade Hydrogen Cells to level 1', check: s => s.hydrogenLevel >= 1 },
+    { id: 'hydrogen_10', name: 'Hydrogen Horizon', desc: 'Upgrade Hydrogen Cells to level 10', check: s => s.hydrogenLevel >= 10 },
+    { id: 'solar_1', name: 'Wings of Light', desc: 'Upgrade the Solar Array to level 1', check: s => s.solarLevel >= 1 },
+    { id: 'solar_10', name: 'Sun Harvest', desc: 'Upgrade the Solar Array to level 10', check: s => s.solarLevel >= 10 },
+    { id: 'targeting_1', name: 'Locked On', desc: 'Upgrade the Targeting Computer to level 1', check: s => s.targetingLevel >= 1 },
+    { id: 'targeting_10', name: 'Pinpoint', desc: 'Upgrade the Targeting Computer to level 10', check: s => s.targetingLevel >= 10 }
 ];
 
 const moneyEl = document.getElementById('money');
@@ -191,6 +203,10 @@ let coolingBtn = null;
 let turbineBtn = null;
 let laserBtn = null;
 let commandBtn = null;
+let controlBtn = null;
+let hydrogenBtn = null;
+let solarBtn = null;
+let targetingBtn = null;
 let buildingBtns = [];
 let buyAmount = 1;
 
@@ -326,10 +342,9 @@ function buildingMap(i) {
 }
 function incomePerSec() {
     const base = buildings.reduce((sum, b, i) => sum + (buildingMap(i) === currentMap ? b.income * state.buildings[i] * buildingMult(i) : 0), 0);
-    const plant = currentMap === 'nuclear' ? plantIncome() * nuclearEfficiency() : 0;
-    const turbines = currentMap === 'nuclear' ? turbineIncome() : 0;
-    const laser = currentMap === 'station' ? laserIncome() : 0;
-    return (base + plant + turbines + laser) * incomeMult() * boostMult() * (1 - pollutionPenalty());
+    const nuclear = currentMap === 'nuclear' ? (plantIncome() * nuclearEfficiency() + turbineIncome() + hydrogenIncome()) * controlMult() : 0;
+    const station = currentMap === 'station' ? (laserIncome() + solarIncome()) * targetingMult() : 0;
+    return (base + nuclear + station) * incomeMult() * boostMult() * (1 - pollutionPenalty());
 }
 function incomeMult() {
     return (1 + 0.05 * state.achievements.length) * (1 + 0.25 * state.rebirths) * commandMult();
@@ -407,6 +422,40 @@ function buyTurbineUpgrade() {
         showToast('⚙️ Steam turbines spun up to level ' + state.turbineLevel + (n > 1 ? ' (×' + n + ')' : ''));
     }
 }
+// Control rods: +15% to ALL nuclear-map income per level.
+function controlUpgradeCost(level) {
+    return Math.floor(2e22 * Math.pow(3, level));
+}
+function controlMult() {
+    return 1 + 0.15 * state.controlLevel;
+}
+function buyControlUpgrade() {
+    const { n, cost } = upgradeBuyInfo(controlUpgradeCost, state.controlLevel);
+    if (n > 0 && state.money >= cost) {
+        state.money -= cost;
+        state.controlLevel += n;
+        update();
+        showToast('🗹️ Control rods inserted to level ' + state.controlLevel + (n > 1 ? ' (×' + n + ')' : ''));
+    }
+}
+// Hydrogen cells: electrolysis tanks split river water into clean fuel —
+// a third generator on the nuclear map.
+function hydrogenUpgradeCost(level) {
+    return Math.floor(7e21 * Math.pow(2.9, level));
+}
+function hydrogenIncome() {
+    if (state.hydrogenLevel <= 0) return 0;
+    return 1.5e13 * Math.pow(2.4, state.hydrogenLevel);
+}
+function buyHydrogenUpgrade() {
+    const { n, cost } = upgradeBuyInfo(hydrogenUpgradeCost, state.hydrogenLevel);
+    if (n > 0 && state.money >= cost) {
+        state.money -= cost;
+        state.hydrogenLevel += n;
+        update();
+        showToast('⚗️ Hydrogen cells charged to level ' + state.hydrogenLevel + (n > 1 ? ' (×' + n + ')' : ''));
+    }
+}
 // ---- Space station: laser + command module ----
 // The space laser is the station's own generator — you level it up just like
 // the nuclear plant. The command module boosts ALL income on every map.
@@ -439,6 +488,39 @@ function buyCommandUpgrade() {
         state.commandLevel += n;
         update();
         showToast('🛰️ Command module upgraded to level ' + state.commandLevel + (n > 1 ? ' (×' + n + ')' : ''));
+    }
+}
+// Solar array: the station's second generator — unfolding panel wings.
+function solarUpgradeCost(level) {
+    return Math.floor(5e23 * Math.pow(2.8, level));
+}
+function solarIncome() {
+    if (state.solarLevel <= 0) return 0;
+    return 5e15 * Math.pow(2.6, state.solarLevel);
+}
+function buySolarUpgrade() {
+    const { n, cost } = upgradeBuyInfo(solarUpgradeCost, state.solarLevel);
+    if (n > 0 && state.money >= cost) {
+        state.money -= cost;
+        state.solarLevel += n;
+        update();
+        showToast('☀️ Solar array deployed to level ' + state.solarLevel + (n > 1 ? ' (×' + n + ')' : ''));
+    }
+}
+// Targeting computer: +15% to ALL station-map income per level.
+function targetingUpgradeCost(level) {
+    return Math.floor(5e24 * Math.pow(3, level));
+}
+function targetingMult() {
+    return 1 + 0.15 * state.targetingLevel;
+}
+function buyTargetingUpgrade() {
+    const { n, cost } = upgradeBuyInfo(targetingUpgradeCost, state.targetingLevel);
+    if (n > 0 && state.money >= cost) {
+        state.money -= cost;
+        state.targetingLevel += n;
+        update();
+        showToast('🎯 Targeting computer calibrated to level ' + state.targetingLevel + (n > 1 ? ' (×' + n + ')' : ''));
     }
 }
 
@@ -512,8 +594,15 @@ function pollutionPenalty() {
 function rebirthRequirement(n) {
     const r = n === undefined ? state.rebirths : n;
     // First 10: 10x per rebirth. After that: gentle 3% increase per rebirth.
-    if (r <= 10) return REBIRTH_BASE * Math.pow(10, r);
-    return REBIRTH_BASE * 1e10 * Math.pow(1.03, r - 10);
+    let req;
+    if (r <= 10) req = REBIRTH_BASE * Math.pow(10, r);
+    else req = REBIRTH_BASE * 1e10 * Math.pow(1.03, r - 10);
+    // The exponential overflows the double range around ~24k rebirths (1.03^r
+    // hits Infinity), which made the UI show "$∞ needed". Fall back to a cost
+    // pegged to current income so it stays finite, displayable, and reachable
+    // (roughly a week of earnings) at absurd rebirth counts.
+    if (!isFinite(req) || req > 1e280) req = Math.max(REBIRTH_BASE * 1e10, incomePerSec() * 604800);
+    return req;
 }
 function rebirthProgress() {
     return Math.min(state.money / rebirthRequirement(), 1);
@@ -763,6 +852,10 @@ function doRebirth() {
     state.turbineLevel = 0;
     state.laserLevel = 0;
     state.commandLevel = 0;
+    state.controlLevel = 0;
+    state.hydrogenLevel = 0;
+    state.solarLevel = 0;
+    state.targetingLevel = 0;
     invalidateLayers();
     save();
     update();
@@ -792,7 +885,9 @@ function encodeSave(obj) {
 }
 function decodeSave(str) {
     if (!str) throw new Error('empty');
-    const t = str.trim();
+    // Strip whitespace so codes copied from chat (where long lines wrap
+    // and can pick up line breaks) still import cleanly.
+    const t = str.trim().replace(/\s+/g, '');
     // Accept old plain-JSON saves for backwards compatibility.
     if (t.charAt(0) === '{') return JSON.parse(t);
     const parts = t.split('.');
@@ -882,11 +977,35 @@ function createShop() {
         tSub.id = 'turbineSub';
         tDiv.appendChild(tSub);
         shopItemsEl.appendChild(tDiv);
+
+        const rDiv = document.createElement('div');
+        rDiv.className = 'item';
+        controlBtn = document.createElement('button');
+        controlBtn.onclick = buyControlUpgrade;
+        rDiv.appendChild(controlBtn);
+        const rSub = document.createElement('div');
+        rSub.className = 'item-sub';
+        rSub.id = 'controlSub';
+        rDiv.appendChild(rSub);
+        shopItemsEl.appendChild(rDiv);
+
+        const hDiv = document.createElement('div');
+        hDiv.className = 'item';
+        hydrogenBtn = document.createElement('button');
+        hydrogenBtn.onclick = buyHydrogenUpgrade;
+        hDiv.appendChild(hydrogenBtn);
+        const hSub = document.createElement('div');
+        hSub.className = 'item-sub';
+        hSub.id = 'hydrogenSub';
+        hDiv.appendChild(hSub);
+        shopItemsEl.appendChild(hDiv);
     } else {
         plantBtn = null;
         fuelBtn = null;
         coolingBtn = null;
         turbineBtn = null;
+        controlBtn = null;
+        hydrogenBtn = null;
     }
 
     // Station map: the space laser generates income, and the command module
@@ -913,9 +1032,33 @@ function createShop() {
         cSub.id = 'commandSub';
         cDiv.appendChild(cSub);
         shopItemsEl.appendChild(cDiv);
+
+        const sDiv = document.createElement('div');
+        sDiv.className = 'item';
+        solarBtn = document.createElement('button');
+        solarBtn.onclick = buySolarUpgrade;
+        sDiv.appendChild(solarBtn);
+        const sSub = document.createElement('div');
+        sSub.className = 'item-sub';
+        sSub.id = 'solarSub';
+        sDiv.appendChild(sSub);
+        shopItemsEl.appendChild(sDiv);
+
+        const tDiv2 = document.createElement('div');
+        tDiv2.className = 'item';
+        targetingBtn = document.createElement('button');
+        targetingBtn.onclick = buyTargetingUpgrade;
+        tDiv2.appendChild(targetingBtn);
+        const tSub2 = document.createElement('div');
+        tSub2.className = 'item-sub';
+        tSub2.id = 'targetingSub';
+        tDiv2.appendChild(tSub2);
+        shopItemsEl.appendChild(tDiv2);
     } else {
         laserBtn = null;
         commandBtn = null;
+        solarBtn = null;
+        targetingBtn = null;
     }
 
     const allBuildings = buildings;
@@ -1120,6 +1263,20 @@ function update() {
         const tSub = document.getElementById('turbineSub');
         if (tSub) tSub.textContent = 'produces $' + fmt(turbineIncome()) + '/sec';
     }
+    if (controlBtn) {
+        const info = upgradeBuyInfo(controlUpgradeCost, state.controlLevel);
+        controlBtn.textContent = '🗹️ Control Rods (lvl ' + state.controlLevel + ') - $' + fmt(info.cost) + (info.n > 1 ? ' (×' + info.n + ')' : '');
+        controlBtn.disabled = info.n === 0;
+        const rSub = document.getElementById('controlSub');
+        if (rSub) rSub.textContent = '+' + (state.controlLevel * 15) + '% nuclear income';
+    }
+    if (hydrogenBtn) {
+        const info = upgradeBuyInfo(hydrogenUpgradeCost, state.hydrogenLevel);
+        hydrogenBtn.textContent = '⚗️ Hydrogen Cells (lvl ' + state.hydrogenLevel + ') - $' + fmt(info.cost) + (info.n > 1 ? ' (×' + info.n + ')' : '');
+        hydrogenBtn.disabled = info.n === 0;
+        const hSub = document.getElementById('hydrogenSub');
+        if (hSub) hSub.textContent = 'produces $' + fmt(hydrogenIncome()) + '/sec';
+    }
 
     if (laserBtn) {
         const info = upgradeBuyInfo(laserUpgradeCost, state.laserLevel);
@@ -1134,6 +1291,20 @@ function update() {
         commandBtn.disabled = info.n === 0;
         const cSub = document.getElementById('commandSub');
         if (cSub) cSub.textContent = '+' + (state.commandLevel * 25) + '% income everywhere';
+    }
+    if (solarBtn) {
+        const info = upgradeBuyInfo(solarUpgradeCost, state.solarLevel);
+        solarBtn.textContent = '☀️ Solar Array (lvl ' + state.solarLevel + ') - $' + fmt(info.cost) + (info.n > 1 ? ' (×' + info.n + ')' : '');
+        solarBtn.disabled = info.n === 0;
+        const sSub = document.getElementById('solarSub');
+        if (sSub) sSub.textContent = 'produces $' + fmt(solarIncome()) + '/sec';
+    }
+    if (targetingBtn) {
+        const info = upgradeBuyInfo(targetingUpgradeCost, state.targetingLevel);
+        targetingBtn.textContent = '🎯 Targeting Computer (lvl ' + state.targetingLevel + ') - $' + fmt(info.cost) + (info.n > 1 ? ' (×' + info.n + ')' : '');
+        targetingBtn.disabled = info.n === 0;
+        const tSub2 = document.getElementById('targetingSub');
+        if (tSub2) tSub2.textContent = '+' + (state.targetingLevel * 15) + '% station income';
     }
 
     buildings.forEach((b, i) => {
@@ -1165,7 +1336,7 @@ function updateMeta() {
     const owned = state.buildings.reduce((a, b) => a + b, 0);
     // Only re-render stats/achievements when something actually changed;
     // update() runs 10×/sec so rebuilding this HTML every tick is wasteful.
-    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.rebirths, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution(), earthPollution(), currentMap, state.laserLevel, state.commandLevel, state.fuelLevel, state.coolingLevel, state.turbineLevel, stationUnlocked()].join(',');
+    const sig = [state.totalClicks, state.totalEarned, owned, state.bestCombo, state.rebirths, state.achievements.length, state.frenziesTriggered, state.boostsCaught, pollution(), earthPollution(), currentMap, state.laserLevel, state.commandLevel, state.fuelLevel, state.coolingLevel, state.turbineLevel, state.controlLevel, state.hydrogenLevel, state.solarLevel, state.targetingLevel, stationUnlocked()].join(',');
     if (sig === metaSig) return;
     metaSig = sig;
 
@@ -1184,7 +1355,11 @@ function updateMeta() {
         '<div><span class="stat-label">Command module:</span> lvl ' + state.commandLevel + ' (+' + (state.commandLevel * 25) + '% all income)</div>' +
         '<div><span class="stat-label">Fuel rods:</span> lvl ' + state.fuelLevel + ' (+' + (state.fuelLevel * 50) + '% plant)</div>' +
         '<div><span class="stat-label">Cooling towers:</span> lvl ' + state.coolingLevel + ' (river ' + Math.round(nuclearRiverPollution() * 100) + '%)</div>' +
-        '<div><span class="stat-label">Steam turbines:</span> lvl ' + state.turbineLevel + ' ($' + fmt(turbineIncome()) + '/sec)</div>';
+        '<div><span class="stat-label">Steam turbines:</span> lvl ' + state.turbineLevel + ' ($' + fmt(turbineIncome()) + '/sec)</div>' +
+        '<div><span class="stat-label">Control rods:</span> lvl ' + state.controlLevel + ' (+' + (state.controlLevel * 15) + '% nuclear)</div>' +
+        '<div><span class="stat-label">Hydrogen cells:</span> lvl ' + state.hydrogenLevel + ' ($' + fmt(hydrogenIncome()) + '/sec)</div>' +
+        '<div><span class="stat-label">Solar array:</span> lvl ' + state.solarLevel + ' ($' + fmt(solarIncome()) + '/sec)</div>' +
+        '<div><span class="stat-label">Targeting computer:</span> lvl ' + state.targetingLevel + ' (+' + (state.targetingLevel * 15) + '% station)</div>';
 
 
     achievementsEl.innerHTML =
@@ -1813,6 +1988,19 @@ function drawNuclearReactor(x, y, gold) {
             ctx.fillRect(rx, baseY - 10, 1, 4);
         }
     }
+    // control rods — a graphite cluster drives deeper into the core as you level
+    if (state.controlLevel >= 1) {
+        const rods = Math.min(4, 1 + Math.floor(state.controlLevel / 4));
+        const depth = Math.min(5, 2 + Math.floor(state.controlLevel / 3));
+        ctx.fillStyle = '#3a3a44';
+        for (let i = 0; i < rods; i++) ctx.fillRect(46 + i * 2, baseY - 12 - depth, 1, depth);
+        ctx.fillStyle = '#8a8a96';
+        ctx.fillRect(45, baseY - 13 - depth, rods * 2 + 1, 1);
+        if (state.controlLevel >= 3) {
+            ctx.fillStyle = 'rgba(140, 255, 160, ' + (0.2 + (state.controlLevel * 0.02)).toFixed(2) + ')';
+            ctx.fillRect(44, baseY - 13, 13, 10);
+        }
+    }
     // radiation trefoil on the building wall
     ctx.fillStyle = '#ffb400';
     ctx.fillRect(63, baseY - 10, 2, 2);
@@ -1840,6 +2028,28 @@ function drawNuclearReactor(x, y, gold) {
             ctx.fillStyle = 'rgba(235, 245, 250, ' + (0.55 - i * 0.13).toFixed(2) + ')';
             ctx.fillRect(px, py, 6, 3);
             ctx.fillRect(px + 1, py - 1, 4, 2);
+        }
+    }
+    // hydrogen electrolysis tanks on the riverbank — bubbles rise as they charge
+    if (state.hydrogenLevel >= 1) {
+        const tanks = Math.min(3, 1 + Math.floor(state.hydrogenLevel / 4));
+        for (let i = 0; i < tanks; i++) {
+            const tx = 180 + i * 8;
+            const ty = 116;
+            ctx.fillStyle = '#425f7f';
+            ctx.fillRect(tx, ty, 6, 14);
+            ctx.fillStyle = '#2a3a55';
+            ctx.fillRect(tx, ty, 6, 2);
+            const bub = Math.floor((frame * 0.7 + i * 5) % 10);
+            ctx.fillStyle = '#3fd0ff';
+            ctx.fillRect(tx + 2, ty + 3 + bub, 2, 2);
+            ctx.fillStyle = '#9fb8d0';
+            ctx.fillRect(tx + 1, ty - 1, 4, 2);
+        }
+        if (state.hydrogenLevel >= 3) {
+            const on = (frame * 0.2) % 2 < 1;
+            ctx.fillStyle = on ? 'rgba(120, 240, 255, 0.4)' : 'rgba(120, 240, 255, 0.15)';
+            ctx.fillRect(178, 113, 24, 2);
         }
     }
     // steam turbine hall bolted to the right of the reactor — blades spin
@@ -2046,6 +2256,25 @@ function drawStationInterior() {
     ctx.fillRect(44, 8, 4, 80);
     ctx.fillRect(276, 8, 4, 80);
 
+    // solar array — panel wings float in view outside the station, growing with level
+    if (state.solarLevel >= 1) {
+        const wings = Math.min(2, 1 + Math.floor(state.solarLevel / 5));
+        const rows = Math.min(3, 1 + Math.floor(state.solarLevel / 4));
+        for (let w = 0; w < wings; w++) {
+            const x0 = w === 0 ? 52 : 196;
+            for (let r = 0; r < rows; r++) {
+                const y = 12 + r * 7;
+                ctx.fillStyle = '#1a2442';
+                ctx.fillRect(x0, y, 40, 5);
+                ctx.fillStyle = '#2e4a7e';
+                for (let c = 0; c < 6; c++) ctx.fillRect(x0 + 1 + c * 6, y + 1, 5, 3);
+                if ((frame + r * 9 + w * 5) % 24 < 7) {
+                    ctx.fillStyle = 'rgba(160, 220, 255, 0.45)';
+                    ctx.fillRect(x0 + 3, y + 1, 12, 1);
+                }
+            }
+        }
+    }
     // space laser firing out of the viewport — visible once you own it
     if (state.laserLevel >= 1) {
         const firing = (frame + 60) % 240 < 20;
@@ -2056,6 +2285,29 @@ function drawStationInterior() {
         ctx.fillRect(50, 52, 218, 1);
     }
 
+    // targeting computer — a rotating sensor dish with a HUD reticle on the window
+    if (state.targetingLevel >= 1) {
+        const dishX = 30, dishY = 26;
+        ctx.fillStyle = '#8a94a6';
+        ctx.fillRect(dishX - 5, dishY + 2, 10, 2);
+        ctx.fillStyle = '#3a4a6e';
+        ctx.fillRect(dishX - 2, dishY - 5, 4, 7);
+        ctx.fillStyle = '#c9d2e2';
+        ctx.fillRect(dishX - 2, dishY - 1, 4, 3);
+        const spin = (frame * 0.2) % 2 < 1 ? -1 : 1;
+        ctx.fillStyle = '#ffb400';
+        ctx.fillRect(dishX + spin, dishY - 2, 2, 2);
+        // blinking targeting reticle on the viewport
+        if ((frame * 0.3) % 4 < 3) {
+            ctx.fillStyle = '#ff5a5a';
+            ctx.fillRect(150, 42, 22, 1);
+            ctx.fillRect(150, 58, 22, 1);
+            ctx.fillRect(158, 42, 1, 17);
+            ctx.fillRect(163, 42, 1, 17);
+            ctx.fillStyle = '#ffb400';
+            ctx.fillRect(158, 49, 6, 3);
+        }
+    }
     // command module upgrades light up equipment racks on the side walls
     if (state.commandLevel >= 1) {
         const lit = Math.min(6, state.commandLevel);
@@ -2633,7 +2885,7 @@ document.addEventListener('keydown', (e) => {
 
 document.getElementById('resetBtn').onclick = () => {
     if (!confirm('Reset all progress? This cannot be undone.')) return;
-    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), plantLevel: 0, fuelLevel: 0, coolingLevel: 0, turbineLevel: 0, laserLevel: 0, commandLevel: 0, totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
+    state = { money: 0, clickPower: 1, clickLevel: 0, buildings: buildings.map(() => 0), plantLevel: 0, fuelLevel: 0, coolingLevel: 0, turbineLevel: 0, laserLevel: 0, commandLevel: 0, controlLevel: 0, hydrogenLevel: 0, solarLevel: 0, targetingLevel: 0, totalClicks: 0, totalEarned: 0, achievements: [], balloonsCaught: 0, rebirths: 0, bestCombo: 0, frenziesTriggered: 0, boostsCaught: 0, lastSaved: 0 };
     combo = 0;
     comboEndsAt = 0;
     frenzy.active = false;
@@ -2662,6 +2914,10 @@ function loadFrom(data) {
     state.turbineLevel = data.turbineLevel ?? 0;
     state.laserLevel = data.laserLevel ?? 0;
     state.commandLevel = data.commandLevel ?? 0;
+    state.controlLevel = data.controlLevel ?? 0;
+    state.hydrogenLevel = data.hydrogenLevel ?? 0;
+    state.solarLevel = data.solarLevel ?? 0;
+    state.targetingLevel = data.targetingLevel ?? 0;
     state.totalClicks = data.totalClicks ?? 0;
     state.totalEarned = data.totalEarned ?? 0;
     state.achievements = Array.isArray(data.achievements) ? data.achievements : [];
@@ -2691,17 +2947,25 @@ function applyOfflineEarnings() {
     // The nuclear plant keeps producing while you're away — that's the whole
     // point of it — even if you didn't leave the game on the nuclear world.
     const plantOffline = currentMap !== 'nuclear' && state.plantLevel > 0
-        ? plantIncome() * nuclearEfficiency() * incomeMult() * boostMult() * (1 - pollutionPenalty())
+        ? plantIncome() * nuclearEfficiency() * controlMult() * incomeMult() * boostMult() * (1 - pollutionPenalty())
         : 0;
     // Steam turbines keep spinning while you're away too.
     const turbineOffline = currentMap !== 'nuclear' && state.turbineLevel > 0
-        ? turbineIncome() * incomeMult() * boostMult() * (1 - pollutionPenalty())
+        ? turbineIncome() * controlMult() * incomeMult() * boostMult() * (1 - pollutionPenalty())
+        : 0;
+    // Hydrogen cells keep bubbling while you're away too.
+    const hydrogenOffline = currentMap !== 'nuclear' && state.hydrogenLevel > 0
+        ? hydrogenIncome() * controlMult() * incomeMult() * boostMult() * (1 - pollutionPenalty())
         : 0;
     // The space laser also keeps firing while you're away.
     const laserOffline = currentMap !== 'station' && state.laserLevel > 0
-        ? laserIncome() * incomeMult() * boostMult() * (1 - pollutionPenalty())
+        ? laserIncome() * targetingMult() * incomeMult() * boostMult() * (1 - pollutionPenalty())
         : 0;
-    const earned = (incomePerSec() + plantOffline + turbineOffline + laserOffline) * capped * 0.5;
+    // And the solar array keeps soaking up sun while you're away.
+    const solarOffline = currentMap !== 'station' && state.solarLevel > 0
+        ? solarIncome() * targetingMult() * incomeMult() * boostMult() * (1 - pollutionPenalty())
+        : 0;
+    const earned = (incomePerSec() + plantOffline + turbineOffline + hydrogenOffline + laserOffline + solarOffline) * capped * 0.5;
     if (earned < 1) return;
     state.money += earned;
     state.totalEarned += earned;
